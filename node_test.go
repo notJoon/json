@@ -31,7 +31,7 @@ func TestNode_CreateNewNode(t *testing.T) {
 			name: "object with empty key",
 			args: _args{
 				prev: ObjectNode("", make(map[string]*Node)),
-				buf:  NewBuffer(make([]byte, 10)),
+				buf:  newBuffer(make([]byte, 10)),
 				typ:  Boolean,
 				key:  &nilKey,
 			},
@@ -42,7 +42,7 @@ func TestNode_CreateNewNode(t *testing.T) {
 			name: "child for non container type",
 			args: _args{
 				prev: BoolNode("", true),
-				buf:  NewBuffer(make([]byte, 10)),
+				buf:  newBuffer(make([]byte, 10)),
 				typ:  Boolean,
 				key:  &rel,
 			},

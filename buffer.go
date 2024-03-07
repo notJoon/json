@@ -18,10 +18,8 @@ type buffer struct {
 	class Classes
 }
 
-type tokens []string
-
 // newBuffer creates a new buffer with the given data
-func NewBuffer(data []byte) *buffer {
+func newBuffer(data []byte) *buffer {
 	return &buffer{
 		data:   data,
 		length: len(data),
@@ -213,10 +211,6 @@ func (b *buffer) backslash() bool {
 	}
 
 	return count%2 != 0
-}
-
-func (b *buffer) reset() {
-	b.last = GO
 }
 
 func (b *buffer) pathToken() error {

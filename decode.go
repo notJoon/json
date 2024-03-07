@@ -6,7 +6,7 @@ import (
 )
 
 func Unmarshal(data []byte) (*Node, error) {
-	buf := NewBuffer(data)
+	buf := newBuffer(data)
 
 	var (
 		state   States

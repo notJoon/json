@@ -292,7 +292,7 @@ func TestSkipToNextSignificantToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := NewBuffer(tt.input)
+			b := newBuffer(tt.input)
 			b.skipToNextSignificantToken()
 			if b.index != tt.expected {
 				t.Errorf("after skipToNextSignificantToken(), got index = %v, want %v", b.index, tt.expected)
@@ -302,7 +302,7 @@ func TestSkipToNextSignificantToken(t *testing.T) {
 }
 
 func mockBuffer(s string) *buffer {
-	return NewBuffer([]byte(s))
+	return newBuffer([]byte(s))
 }
 
 func TestSkipAndReturnIndex(t *testing.T) {
@@ -559,7 +559,7 @@ func TestBufferToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			buf := NewBuffer([]byte(tt.path))
+			buf := newBuffer([]byte(tt.path))
 
 			err := buf.pathToken()
 			if tt.isErr {
@@ -609,7 +609,7 @@ func TestBufferFirst(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := NewBuffer(tt.data)
+			b := newBuffer(tt.data)
 
 			got, err := b.first()
 			if err != nil && tt.expected != 0 {
