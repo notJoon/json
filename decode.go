@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-func unmarshal2(data []byte) (*Node, error) {
+func Unmarshal(data []byte) (*Node, error) {
 	buf := NewBuffer(data)
 
 	var (
@@ -232,7 +232,7 @@ func cptrs(cpy *string) *string {
 func UnmarshalSafe(data []byte) (*Node, error) {
 	var safe []byte
 	safe = append(safe, data...)
-	return unmarshal2(safe)
+	return Unmarshal(safe)
 }
 
 func Must(root *Node, expect error) *Node {

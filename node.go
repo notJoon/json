@@ -6,28 +6,25 @@ import (
 	"strconv"
 )
 
-type NodeValue struct {
-	value interface{}
-	typ   ValueType
-}
+// type NodeValue struct {
+// 	value     interface{}
+// 	innerType ValueType
+// }
 
-func newNodeValue(value interface{}) *NodeValue {
-	return &NodeValue{
-		value: value,
-		typ:   typeOf(value),
-	}
-}
-
-func (nv *NodeValue) Load() interface{} {
-	return nv.value
-}
+// func newNodeValue(value interface{}) *NodeValue {
+// 	return &NodeValue{
+// 		value:     value,
+// 		innerType: typeOf(value),
+// 	}
+// }
 
 type Node struct {
 	prev     *Node
 	next     map[string]*Node
 	key      *string
 	data     []byte
-	value    *NodeValue
+	value    interface{}
+	nodeType ValueType
 	index    *int
 	borders  [2]int // start, end
 	modified bool
@@ -35,14 +32,11 @@ type Node struct {
 
 func NewNode(prev *Node, b *buffer, typ ValueType, key **string) (*Node, error) {
 	curr := &Node{
-		prev:    prev,
-		data:    b.data,
-		borders: [2]int{b.index, 0},
-		key:     *key,
-		value: &NodeValue{
-			value: nil,
-			typ:   typ,
-		},
+		prev:     prev,
+		data:     b.data,
+		borders:  [2]int{b.index, 0},
+		key:      *key,
+		nodeType: typ,
 		modified: false,
 	}
 
@@ -70,19 +64,22 @@ func NewNode(prev *Node, b *buffer, typ ValueType, key **string) (*Node, error) 
 	return curr, nil
 }
 
+func (n *Node) Load() interface{} {
+	return n.value
+}
+
 func valueNode(prev *Node, _key string, typ ValueType, val interface{}) *Node {
 	curr := &Node{
-		prev:    prev,
-		data:    nil,
-		borders: [2]int{0, 0},
-		value: &NodeValue{
-			typ: typ,
-		},
+		prev:     prev,
+		data:     nil,
+		borders:  [2]int{0, 0},
+		value:    val,
 		modified: true,
 	}
 
 	if val != nil {
-		curr.value = newNodeValue(val)
+		// curr.value = newNodeValue(val)
+		curr.nodeType = typ
 	}
 
 	return curr
@@ -140,14 +137,14 @@ func (n *Node) Empty() bool {
 }
 
 func (n *Node) Type() ValueType {
-	return n.value.typ
+	return n.nodeType
 }
 
 func (n *Node) Value() (value interface{}, err error) {
-	value = n.value.Load()
+	value = n.Load()
 
 	if value == nil {
-		switch n.value.typ {
+		switch n.nodeType {
 		case Null:
 			return nil, nil
 
@@ -157,7 +154,8 @@ func (n *Node) Value() (value interface{}, err error) {
 				return nil, err
 			}
 
-			n.value = newNodeValue(value)
+			// n.value = newNodeValue(value)
+			n.value = value
 
 		case String:
 			var ok bool
@@ -167,7 +165,8 @@ func (n *Node) Value() (value interface{}, err error) {
 				return "", errors.New("invalid string value")
 			}
 
-			n.value = newNodeValue(value)
+			// n.value = newNodeValue(value)
+			n.value = value
 
 		case Boolean:
 			if len(n.Source()) == 0 {
@@ -176,7 +175,8 @@ func (n *Node) Value() (value interface{}, err error) {
 
 			b := n.Source()[0]
 			value = b == 't' || b == 'T'
-			n.value = newNodeValue(value)
+			// n.value = newNodeValue(value)
+			n.value = value
 
 		case Array:
 			elems := make([]*Node, len(n.next))
@@ -186,7 +186,8 @@ func (n *Node) Value() (value interface{}, err error) {
 			}
 
 			value = elems
-			n.value = newNodeValue(value)
+			// n.value = newNodeValue(value)
+			n.value = value
 
 		case Object:
 			obj := make(map[string]*Node, len(n.next))
@@ -196,7 +197,8 @@ func (n *Node) Value() (value interface{}, err error) {
 			}
 
 			value = obj
-			n.value = newNodeValue(value)
+			// n.value = newNodeValue(value)
+			n.value = value
 		}
 	}
 
@@ -239,38 +241,35 @@ func (n *Node) Index() int {
 func NullNode(key string) *Node {
 	return &Node{
 		key:      &key,
-		value:    &NodeValue{value: nil, typ: Null},
+		value:    nil,
+		nodeType: Null,
 		modified: true,
 	}
 }
 
 func NumberNode(key string, value float64) *Node {
 	return &Node{
-		key: &key,
-		value: &NodeValue{
-			value: value,
-			typ:   Number, // treat Float and Number as Number type
-		},
+		key:      &key,
+		value:    value,
+		nodeType: Number,
 		modified: true,
 	}
 }
 
 func StringNode(key string, value string) *Node {
-	val := newNodeValue(value)
-
 	return &Node{
 		key:      &key,
-		value:    val,
+		value:    value,
+		nodeType: String,
 		modified: true,
 	}
 }
 
 func BoolNode(key string, value bool) *Node {
-	val := newNodeValue(value)
-
 	return &Node{
 		key:      &key,
-		value:    val,
+		value:    value,
+		nodeType: Boolean,
 		modified: true,
 	}
 }
@@ -278,13 +277,13 @@ func BoolNode(key string, value bool) *Node {
 func ArrayNode(key string, value []*Node) *Node {
 	curr := &Node{
 		key:      &key,
-		value:    &NodeValue{value: value, typ: Array},
+		nodeType: Array,
 		modified: true,
 	}
 
 	curr.next = make(map[string]*Node, len(value))
 	if value != nil {
-		curr.value = newNodeValue(value)
+		curr.value = value
 
 		for i, v := range value {
 			var idx = i
@@ -300,20 +299,19 @@ func ArrayNode(key string, value []*Node) *Node {
 
 func ObjectNode(key string, value map[string]*Node) *Node {
 	curr := &Node{
-		key: &key,
-		value: &NodeValue{
-			value: value,
-			typ:   Object,
-		},
+		nodeType: Object,
+		key:      &key,
 		next:     value,
 		modified: true,
 	}
 
 	if value != nil {
-		curr.value = newNodeValue(value)
-		for k, v := range value {
-			v.prev = curr
-			v.key = &k
+		curr.value = value
+
+		for key, val := range value {
+			vkey := key
+			val.prev = curr
+			val.key = &vkey
 		}
 	} else {
 		curr.next = make(map[string]*Node)
@@ -323,15 +321,15 @@ func ObjectNode(key string, value map[string]*Node) *Node {
 }
 
 func (n *Node) IsArray() bool {
-	return n.value.typ == Array
+	return n.nodeType == Array
 }
 
 func (n *Node) IsObject() bool {
-	return n.value.typ == Object
+	return n.nodeType == Object
 }
 
 func (n *Node) IsBool() bool {
-	return n.value.typ == Boolean
+	return n.nodeType == Boolean
 }
 
 func (n *Node) ready() bool {
@@ -368,7 +366,7 @@ func (n *Node) GetNull() (interface{}, error) {
 		return nil, errors.New("node is nil")
 	}
 
-	if n.value.typ != Null {
+	if n.nodeType != Null {
 		return nil, errors.New("node is not null")
 	}
 
@@ -380,7 +378,7 @@ func (n *Node) GetNumeric() (float64, error) {
 		return 0, errors.New("node is nil")
 	}
 
-	if n.value.typ != Number {
+	if n.nodeType != Number {
 		return 0, errors.New("node is not number")
 	}
 
@@ -424,7 +422,7 @@ func (n *Node) GetBool() (bool, error) {
 		return false, errors.New("node is nil")
 	}
 
-	if n.value.typ != Boolean {
+	if n.nodeType != Boolean {
 		return false, errors.New("node is not boolean")
 	}
 
@@ -447,7 +445,7 @@ func (n *Node) GetArray() ([]*Node, error) {
 		return nil, errors.New("node is nil")
 	}
 
-	if n.value.typ != Array {
+	if n.nodeType != Array {
 		return nil, errors.New("node is not array")
 	}
 

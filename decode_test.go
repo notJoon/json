@@ -13,12 +13,12 @@ type testCase struct {
 }
 
 func simpleValid(test *testCase, t *testing.T) {
-	root, err := unmarshal2(test.input)
+	root, err := Unmarshal(test.input)
 	if err != nil {
 		t.Errorf("Error on Unmarshal(%s): %s", test.input, err.Error())
 	} else if root == nil {
 		t.Errorf("Error on Unmarshal(%s): root is nil", test.name)
-	} else if root.value.typ != test._type {
+	} else if root.nodeType != test._type {
 		t.Errorf("Error on Unmarshal(%s): wrong type", test.name)
 	} else if !bytes.Equal(root.Source(), test.value) {
 		t.Errorf("Error on Unmarshal(%s): %s != %s", test.name, root.Source(), test.value)
@@ -26,7 +26,7 @@ func simpleValid(test *testCase, t *testing.T) {
 }
 
 func simpleInvalid(test *testCase, t *testing.T) {
-	root, err := unmarshal2(test.input)
+	root, err := Unmarshal(test.input)
 	if err == nil {
 		t.Errorf("Error on Unmarshal(%s): error expected, got '%s'", test.name, root.Source())
 	} else if root != nil {
@@ -90,12 +90,12 @@ func TestUnmarshal_NumericSimpleSuccess(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			root, err := unmarshal2(test.input)
+			root, err := Unmarshal(test.input)
 			if err != nil {
 				t.Errorf("Error on Unmarshal(%s): %s", test.name, err.Error())
 			} else if root == nil {
 				t.Errorf("Error on Unmarshal(%s): root is nil", test.name)
-			} else if root.value.typ != test._type {
+			} else if root.nodeType != test._type {
 				t.Errorf("Error on Unmarshal(%s): wrong type", test.name)
 			} else if !bytes.Equal(root.Source(), test.value) {
 				t.Errorf("Error on Unmarshal(%s): %s != %s", test.name, root.Source(), test.value)
@@ -466,7 +466,7 @@ func TestUnmarshal(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := unmarshal2([]byte(test.value))
+			_, err := Unmarshal([]byte(test.value))
 			if err != nil {
 				t.Errorf("Error on Unmarshal: %s", err.Error())
 			}
@@ -515,7 +515,7 @@ func TestUnmarshalSafe(t *testing.T) {
 	} else if safe == nil {
 		t.Errorf("Error on Unmarshal: safe is nil")
 	} else {
-		root, err := unmarshal2(jsonExample)
+		root, err := Unmarshal(jsonExample)
 		if err != nil {
 			t.Errorf("Error on Unmarshal: %s", err.Error())
 		} else if root == nil {

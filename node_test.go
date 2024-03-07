@@ -21,10 +21,11 @@ func TestNode_CreateNewNode(t *testing.T) {
 	rel := &dummyKey
 
 	tests := []struct {
-		name       string
-		args       _args
-		expectCurr *Node
-		expectErr  bool
+		name        string
+		args        _args
+		expectCurr  *Node
+		expectErr   bool
+		expectPanic bool
 	}{
 		{
 			name: "object with empty key",
@@ -34,8 +35,8 @@ func TestNode_CreateNewNode(t *testing.T) {
 				typ:  Boolean,
 				key:  &nilKey,
 			},
-			expectCurr: nil,
-			expectErr:  true,
+			expectCurr:  nil,
+			expectPanic: true,
 		},
 		{
 			name: "child for non container type",
@@ -52,6 +53,17 @@ func TestNode_CreateNewNode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					if tt.expectPanic {
+						return
+					}
+					t.Errorf("%s panic occurred when not expected: %v", tt.name, r)
+				} else if tt.expectPanic {
+					t.Errorf("%s expected panic but didn't occur", tt.name)
+				}
+			}()
+
 			got, err := NewNode(tt.args.prev, tt.args.buf, tt.args.typ, tt.args.key)
 			if (err != nil) != tt.expectErr {
 				t.Errorf("%s error = %v, expect error %v", tt.name, err, tt.expectErr)
@@ -95,11 +107,9 @@ func TestNode_Value(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			curr := &Node{
-				data: tt.data,
-				value: &NodeValue{
-					typ: tt._type,
-				},
-				borders: [2]int{0, len(tt.data)},
+				data:     tt.data,
+				nodeType: tt._type,
+				borders:  [2]int{0, len(tt.data)},
 			}
 
 			got, err := curr.Value()
@@ -162,7 +172,7 @@ func TestNode_ArrayNode(t *testing.T) {
 /******** value getter ********/
 
 func TestNode_GetBool(t *testing.T) {
-	root, err := unmarshal2([]byte(`true`))
+	root, err := Unmarshal([]byte(`true`))
 	if err != nil {
 		t.Errorf("Error on Unmarshal(): %s", err.Error())
 		return
@@ -188,7 +198,7 @@ func TestNode_GetBool(t *testing.T) {
 }
 
 func TestNode_GetNumeric(t *testing.T) {
-	root, err := unmarshal2([]byte(`123`))
+	root, err := Unmarshal([]byte(`123`))
 	if err != nil {
 		t.Errorf("Error on Unmarshal(): %s", err)
 		return
@@ -205,7 +215,7 @@ func TestNode_GetNumeric(t *testing.T) {
 }
 
 func TestNode_GetString(t *testing.T) {
-	root, err := unmarshal2([]byte(`"123foobar 3456"`))
+	root, err := Unmarshal([]byte(`"123foobar 3456"`))
 	if err != nil {
 		t.Errorf("Error on Unmarshal(): %s", err)
 	}
@@ -221,7 +231,7 @@ func TestNode_GetString(t *testing.T) {
 }
 
 func TestUnmarshal_Array(t *testing.T) {
-	root, err := unmarshal2([]byte(" [1,[\"1\",[1,[1,2,3]]]]\r\n"))
+	root, err := Unmarshal([]byte(" [1,[\"1\",[1,[1,2,3]]]]\r\n"))
 
 	if err != nil {
 		t.Errorf("Error on Unmarshal: %s", err.Error())
@@ -229,7 +239,7 @@ func TestUnmarshal_Array(t *testing.T) {
 
 	if root == nil {
 		t.Errorf("Error on Unmarshal: root is nil")
-	} 
+	}
 
 	if root.Type() != Array {
 		t.Errorf("Error on Unmarshal: wrong type")
@@ -258,7 +268,7 @@ func TestUnmarshal_Array(t *testing.T) {
 var sampleArr = []byte(`[-1, 2, 3, 4, 5, 6]`)
 
 func TestNode_GetArray(t *testing.T) {
-	root, err := unmarshal2(sampleArr)
+	root, err := Unmarshal(sampleArr)
 	if err != nil {
 		t.Errorf("Error on Unmarshal(): %s", err)
 		return
@@ -287,7 +297,7 @@ func TestNode_GetArray(t *testing.T) {
 }
 
 func TestNode_IsArray(t *testing.T) {
-	root, err := unmarshal2(sampleArr)
+	root, err := Unmarshal(sampleArr)
 	if err != nil {
 		t.Errorf("Error on Unmarshal(): %s", err)
 		return
@@ -299,7 +309,7 @@ func TestNode_IsArray(t *testing.T) {
 }
 
 func TestNode_Size(t *testing.T) {
-	root, err := unmarshal2(sampleArr)
+	root, err := Unmarshal(sampleArr)
 	if err != nil {
 		t.Errorf("error occured while unmarshaling")
 	}
@@ -315,7 +325,7 @@ func TestNode_Size(t *testing.T) {
 }
 
 func TestNode_Index_EmptyList(t *testing.T) {
-	root, err := unmarshal2([]byte(`[]`))
+	root, err := Unmarshal([]byte(`[]`))
 	if err != nil {
 		t.Errorf("error occured while unmarshaling")
 	}
@@ -329,7 +339,7 @@ func TestNode_Index_EmptyList(t *testing.T) {
 }
 
 func TestNode_GetObject(t *testing.T) {
-	root, err := unmarshal2([]byte(`{"foo": true,"bar": null}`))
+	root, err := Unmarshal([]byte(`{"foo": true,"bar": null}`))
 	if err != nil {
 		t.Errorf("Error on Unmarshal(): %s", err.Error())
 		return
@@ -375,7 +385,7 @@ func TestNode_ExampleMust(t *testing.T) {
           }
       }`)
 
-	root := Must(unmarshal2(data))
+	root := Must(Unmarshal(data))
 	if root.Size() != 1 {
 		t.Errorf("root.Size() must be 1. got: %v", root.Size())
 	}
@@ -419,7 +429,7 @@ func TestExampleUnmarshal(t *testing.T) {
   }
 }`)
 
-	root, err := unmarshal2(data)
+	root, err := Unmarshal(data)
 	if err != nil {
 		t.Errorf("error occurred when unmarshal")
 	}
@@ -440,19 +450,19 @@ func TestExampleUnmarshal(t *testing.T) {
 		}
 	}
 
-	result := int(prices/float64(size))
+	result := int(prices / float64(size))
 	fmt.Println("AVG price:", result)
 }
 
 func TestNode_ExampleMust_panic(t *testing.T) {
-    defer func() {
-        if r := recover(); r == nil {
-            t.Errorf("The code did not panic")
-        }
-    }()
-    data := []byte(`{]`)
-    root := Must(unmarshal2(data))
-    fmt.Printf("Object has %d inheritors inside", root.Size())
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("The code did not panic")
+		}
+	}()
+	data := []byte(`{]`)
+	root := Must(Unmarshal(data))
+	fmt.Printf("Object has %d inheritors inside", root.Size())
 }
 
 func compareNodes(n1, n2 *Node) bool {
@@ -480,7 +490,7 @@ func compareNodes(n1, n2 *Node) bool {
 		return false
 	}
 
-	if !compareNodeValues(n1.value, n2.value) {
+	if n1.nodeType != n2.nodeType {
 		return false
 	}
 
@@ -499,16 +509,4 @@ func compareNodes(n1, n2 *Node) bool {
 	}
 
 	return true
-}
-
-func compareNodeValues(nv1, nv2 *NodeValue) bool {
-	if nv1 == nil || nv2 == nil {
-		return nv1 == nv2
-	}
-
-	if nv1.typ != nv2.typ {
-		return false
-	}
-
-	return nv1.value == nv2.value
 }

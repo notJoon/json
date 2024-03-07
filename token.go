@@ -40,12 +40,6 @@ var (
 	nullLiteral  = []byte("null")
 )
 
-const (
-	StructLiteral    = "struct"
-	InterfaceLiteral = "interface{}"
-	MapLiteral       = "map"
-)
-
 type ValueType int
 
 const (
@@ -76,9 +70,7 @@ func (v ValueType) String() string {
 		return "boolean"
 	case Null:
 		return "null"
-	case Unknown:
+	default:
 		return "unknown"
 	}
-
-	return "unknown"
 }
