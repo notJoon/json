@@ -36,31 +36,6 @@ func TestParseStringLiteral(t *testing.T) {
 	}
 }
 
-func benchmarkParseStringLiteral(b *testing.B, input []byte) {
-	for i := 0; i < b.N; i++ {
-		_, err := ParseStringLiteral(input)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkParseStringLiteral_Simple(b *testing.B) {
-	benchmarkParseStringLiteral(b, []byte(`"Hello, World!"`))
-}
-
-func BenchmarkParseStringLiteral_Long(b *testing.B) {
-	benchmarkParseStringLiteral(b, []byte(`"Lorem ipsum dolor sit amet, consectetur adipiscing elit."`))
-}
-
-func BenchmarkParseStringLiteral_Escaped(b *testing.B) {
-	benchmarkParseStringLiteral(b, []byte(`"Hello, \"World!\""`))
-}
-
-func BenchmarkParseStringLiteral_Unicode(b *testing.B) {
-	benchmarkParseStringLiteral(b, []byte(`"안녕, 世界!"`))
-}
-
 func TestParseBoolLiteral(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -120,6 +95,105 @@ func TestParseFloatLiteral(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseFloatWithScientificNotation(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected float64
+	}{
+		{"1e6", 1000000},
+		{"1E6", 1000000},
+		{"1.23e10", 1.23e10},
+		{"1.23E10", 1.23e10},
+		{"-1.23e10", -1.23e10},
+		{"-1.23E10", -1.23e10},
+		{"2.45e-8", 2.45e-8},
+		{"2.45E-8", 2.45e-8},
+		{"-2.45e-8", -2.45e-8},
+		{"-2.45E-8", -2.45e-8},
+		{"5e0", 5},
+		{"-5e0", -5},
+		{"5E+0", 5},
+		{"5e+1", 50},
+		{"1e-1", 0.1},
+		{"1E-1", 0.1},
+		{"-1e-1", -0.1},
+		{"-1E-1", -0.1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := ParseFloatLiteral([]byte(tt.input))
+			if got != tt.expected {
+				t.Errorf("ParseFloatLiteral(%s): got %v, want %v", tt.input, got, tt.expected)
+			}
+
+			if err != nil {
+				t.Errorf("ParseFloatLiteral(%s): got error %v", tt.input, err)
+			}
+		})
+	}
+}
+
+func TestParseIntLiteral(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"0", 0},
+		{"1", 1},
+		{"-1", -1},
+		{"12345", 12345},
+		{"-12345", -12345},
+		{"9223372036854775807", 9223372036854775807},
+		{"-9223372036854775808", -9223372036854775808},
+		{"-92233720368547758081", 0},
+		{"18446744073709551616", 0},
+		{"9223372036854775808", 0},
+		{"-9223372036854775809", 0},
+		{"", 0},
+		{"abc", 0},
+		{"12345x", 0},
+		{"123e5", 0},
+		{"9223372036854775807x", 0},
+		{"27670116110564327410", 0},
+		{"-27670116110564327410", 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, _ := ParseIntLiteral([]byte(tt.input))
+			if got != tt.expected {
+				t.Errorf("ParseIntLiteral(%s): got %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func benchmarkParseStringLiteral(b *testing.B, input []byte) {
+	for i := 0; i < b.N; i++ {
+		_, err := ParseStringLiteral(input)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkParseStringLiteral_Simple(b *testing.B) {
+	benchmarkParseStringLiteral(b, []byte(`"Hello, World!"`))
+}
+
+func BenchmarkParseStringLiteral_Long(b *testing.B) {
+	benchmarkParseStringLiteral(b, []byte(`"Lorem ipsum dolor sit amet, consectetur adipiscing elit."`))
+}
+
+func BenchmarkParseStringLiteral_Escaped(b *testing.B) {
+	benchmarkParseStringLiteral(b, []byte(`"Hello, \"World!\""`))
+}
+
+func BenchmarkParseStringLiteral_Unicode(b *testing.B) {
+	benchmarkParseStringLiteral(b, []byte(`"안녕, 世界!"`))
 }
 
 func benchmarkParseFloatLiteral(b *testing.B, input []byte) {
@@ -215,78 +289,4 @@ func BenchmarkParseFloatLiteral_Science_Notation_Negative(b *testing.B) {
 
 func BenchmarkStrconvParseFloat_Science_Notation_Negative(b *testing.B) {
 	benchmarkStrconvParseFloat(b, "-1.23e10")
-}
-
-func TestParseFloatWithScientificNotation(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected float64
-	}{
-		{"1e6", 1000000},
-		{"1E6", 1000000},
-		{"1.23e10", 1.23e10},
-		{"1.23E10", 1.23e10},
-		{"-1.23e10", -1.23e10},
-		{"-1.23E10", -1.23e10},
-		{"2.45e-8", 2.45e-8},
-		{"2.45E-8", 2.45e-8},
-		{"-2.45e-8", -2.45e-8},
-		{"-2.45E-8", -2.45e-8},
-		{"5e0", 5},
-		{"-5e0", -5},
-		{"5E+0", 5},
-		{"5e+1", 50},
-		{"1e-1", 0.1},
-		{"1E-1", 0.1},
-		{"-1e-1", -0.1},
-		{"-1E-1", -0.1},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got, err := ParseFloatLiteral([]byte(tt.input))
-			if got != tt.expected {
-				t.Errorf("ParseFloatLiteral(%s): got %v, want %v", tt.input, got, tt.expected)
-			}
-
-			if err != nil {
-				t.Errorf("ParseFloatLiteral(%s): got error %v", tt.input, err)
-			}
-		})
-	}
-}
-
-func TestParseIntLiteral(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected int64
-	}{
-		{"0", 0},
-		{"1", 1},
-		{"-1", -1},
-		{"12345", 12345},
-		{"-12345", -12345},
-		{"9223372036854775807", 9223372036854775807},
-		{"-9223372036854775808", -9223372036854775808},
-		{"-92233720368547758081", 0},
-		{"18446744073709551616", 0},
-		{"9223372036854775808", 0},
-		{"-9223372036854775809", 0},
-		{"", 0},
-		{"abc", 0},
-		{"12345x", 0},
-		{"123e5", 0},
-		{"9223372036854775807x", 0},
-		{"27670116110564327410", 0},
-		{"-27670116110564327410", 0},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got, _ := ParseIntLiteral([]byte(tt.input))
-			if got != tt.expected {
-				t.Errorf("ParseIntLiteral(%s): got %v, want %v", tt.input, got, tt.expected)
-			}
-		})
-	}
 }

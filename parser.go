@@ -138,7 +138,7 @@ func extractMantissaAndExp10(bytes []byte) (uint64, int, error) {
 	)
 
 	for _, c := range bytes {
-		if c == DotToken {
+		if c == dot {
 			if decimalFound {
 				return 0, 0, errors.New("JSON Error: multiple decimal points found while parsing float value")
 			}
@@ -167,7 +167,7 @@ func extractMantissaAndExp10(bytes []byte) (uint64, int, error) {
 }
 
 func trimNegativeSign(bytes []byte) (neg bool, trimmed []byte) {
-	if bytes[0] == MinusToken {
+	if bytes[0] == minus {
 		return true, bytes[1:]
 	}
 

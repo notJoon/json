@@ -46,7 +46,7 @@ func Unmarshal(data []byte) (*Node, error) {
 						break
 					}
 
-					err = buf.string(DoublyQuoteToken, false)
+					err = buf.string(doubleQuote, false)
 
 					current.borders[1] = buf.index + 1
 					buf.state = OK
@@ -204,11 +204,11 @@ func Unmarshal(data []byte) (*Node, error) {
 // getString extracts a string from the buffer and advances the buffer index past the string.
 func getString(b *buffer) (*string, error) {
 	start := b.index
-	if err := b.string(DoublyQuoteToken, false); err != nil {
+	if err := b.string(doubleQuote, false); err != nil {
 		return nil, err
 	}
 
-	value, ok := Unquote(b.data[start:b.index+1], DoublyQuoteToken)
+	value, ok := Unquote(b.data[start:b.index+1], doubleQuote)
 	if !ok {
 		return nil, unexpectedTokenError(b.data, start)
 	}

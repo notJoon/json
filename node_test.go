@@ -19,6 +19,11 @@ type _args struct {
 	key  **string
 }
 
+type simpleNode struct {
+	name string
+	node *Node
+}
+
 func TestNode_CreateNewNode(t *testing.T) {
 	rel := &dummyKey
 
@@ -188,18 +193,142 @@ func TestNode_GetBool(t *testing.T) {
 	if !value {
 		t.Errorf("root.GetBool() is corrupted")
 	}
+}
 
-	root = NullNode("")
-	if _, err = root.GetBool(); err == nil {
-		t.Errorf("Error on root.GetBool(): NullNode")
+func TestNode_GetBool_Fail(t *testing.T) {
+	tests := []simpleNode{
+		{"nil node", (*Node)(nil)},
+		{"literally null node", NullNode("")},
 	}
 
-	if _, err := (*Node)(nil).GetBool(); err == nil {
-		t.Errorf("(nil).GetBool() should be an error")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := tt.node.GetBool(); err == nil {
+				t.Errorf("%s should be an error", tt.name)
+			}
+		})
 	}
 }
 
-func TestNode_GetNumeric(t *testing.T) {
+func TestNode_IsBool(t *testing.T) {
+	tests := []simpleNode{
+		{"true", BoolNode("", true)},
+		{"false", BoolNode("", false)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !tt.node.IsBool() {
+				t.Errorf("%s should be a bool", tt.name)
+			}
+		})
+	}
+}
+
+func TestNode_IsBool_With_Unmarshal(t *testing.T) {
+	tests := []struct {
+		name string
+		json []byte
+		want bool
+	}{
+		{"true", []byte("true"), true},
+		{"false", []byte("false"), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root, err := Unmarshal(tt.json)
+			if err != nil {
+				t.Errorf("Error on Unmarshal(): %s", err.Error())
+			}
+
+			if root.IsBool() != tt.want {
+				t.Errorf("%s should be a bool", tt.name)
+			}
+		})
+	}
+}
+
+var nullJson = []byte(`null`)
+
+func TestNode_GetNull(t *testing.T) {
+	root, err := Unmarshal(nullJson)
+	if err != nil {
+		t.Errorf("Error on Unmarshal(): %s", err.Error())
+	}
+
+	value, err := root.GetNull()
+	if err != nil {
+		t.Errorf("error occurred while getting null, %s", err)
+	}
+
+	if value != nil {
+		t.Errorf("value is not matched. expected: nil, got: %v", value)
+	}
+}
+
+func TestNode_GetNull_Fail(t *testing.T) {
+	tests := []simpleNode{
+		{"nil node", (*Node)(nil)},
+		{"number node is null", NumberNode("", 42)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := tt.node.GetNull(); err == nil {
+				t.Errorf("%s should be an error", tt.name)
+			}
+		})
+	}
+}
+
+func TestNode_MustNull(t *testing.T) {
+	root, err := Unmarshal(nullJson)
+	if err != nil {
+		t.Errorf("Error on Unmarshal(): %s", err.Error())
+	}
+
+	value := root.MustNull()
+	if value != nil {
+		t.Errorf("value is not matched. expected: nil, got: %v", value)
+	}
+}
+
+func TestNode_GetNumeric_Float(t *testing.T) {
+	root, err := Unmarshal([]byte(`123.456`))
+	if err != nil {
+		t.Errorf("Error on Unmarshal(): %s", err)
+		return
+	}
+
+	value, err := root.GetNumeric()
+	if err != nil {
+		t.Errorf("Error on root.GetNumeric(): %s", err)
+	}
+
+	if value != float64(123.456) {
+		t.Errorf(fmt.Sprintf("value is not matched. expected: 123.456, got: %v", value))
+	}
+}
+
+func TestNode_GetNumeric_Scientific_Notation(t *testing.T) {
+	root, err := Unmarshal([]byte(`1e3`))
+	if err != nil {
+		t.Errorf("Error on Unmarshal(): %s", err)
+		return
+	}
+
+	value, err := root.GetNumeric()
+	if err != nil {
+		t.Errorf("Error on root.GetNumeric(): %s", err)
+	}
+
+	if value != float64(1000) {
+		t.Errorf(fmt.Sprintf("value is not matched. expected: 1000, got: %v", value))
+	}
+}
+
+func TestNode_GetNumeric_With_Unmarshal(t *testing.T) {
 	root, err := Unmarshal([]byte(`123`))
 	if err != nil {
 		t.Errorf("Error on Unmarshal(): %s", err)
@@ -216,6 +345,22 @@ func TestNode_GetNumeric(t *testing.T) {
 	}
 }
 
+func TestNode_GetNumeric_Fail(t *testing.T) {
+	tests := []simpleNode{
+		{"nil node", (*Node)(nil)},
+		{"null node", NullNode("")},
+		{"string node", StringNode("", "123")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := tt.node.GetNumeric(); err == nil {
+				t.Errorf("%s should be an error", tt.name)
+			}
+		})
+	}
+}
+
 func TestNode_GetString(t *testing.T) {
 	root, err := Unmarshal([]byte(`"123foobar 3456"`))
 	if err != nil {
@@ -229,6 +374,49 @@ func TestNode_GetString(t *testing.T) {
 
 	if value != "123foobar 3456" {
 		t.Errorf(fmt.Sprintf("value is not matched. expected: 123, got: %s", value))
+	}
+}
+
+func TestNode_GetString_Fail(t *testing.T) {
+	tests := []simpleNode{
+		{"nil node", (*Node)(nil)},
+		{"null node", NullNode("")},
+		{"number node", NumberNode("", 123)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := tt.node.GetString(); err == nil {
+				t.Errorf("%s should be an error", tt.name)
+			}
+		})
+	}
+}
+
+func TestNode_MustString(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{"foo", []byte(`"foo"`)},
+		{"foo bar", []byte(`"foo bar"`)},
+		{"", []byte(`""`)},
+		{"こんにちは", []byte(`"こんにちは"`)},
+		{"one \"encoded\" string", []byte(`"one \"encoded\" string"`)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root, err := Unmarshal(tt.data)
+			if err != nil {
+				t.Errorf("Error on Unmarshal(): %s", err)
+			}
+
+			value := root.MustString()
+			if value != tt.name {
+				t.Errorf("value is not matched. expected: %s, got: %s", tt.name, value)
+			}
+		})
 	}
 }
 
@@ -298,6 +486,22 @@ func TestNode_GetArray(t *testing.T) {
 	}
 }
 
+func TestNode_GetArray_Fail(t *testing.T) {
+	tests := []simpleNode{
+		{"nil node", (*Node)(nil)},
+		{"null node", NullNode("")},
+		{"number node", NumberNode("", 123)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := tt.node.GetArray(); err == nil {
+				t.Errorf("%s should be an error", tt.name)
+			}
+		})
+	}
+}
+
 func TestNode_IsArray(t *testing.T) {
 	root, err := Unmarshal(sampleArr)
 	if err != nil {
@@ -323,6 +527,86 @@ func TestNode_Size(t *testing.T) {
 
 	if (*Node)(nil).Size() != 0 {
 		t.Errorf(fmt.Sprintf("Size() must be 0. got: %v", (*Node)(nil).Size()))
+	}
+}
+
+func TestNode_Index(t *testing.T) {
+	root, err := Unmarshal([]byte(`[1, 2, 3, 4, 5, 6]`))
+	if err != nil {
+		t.Error("error occured while unmarshaling")
+	}
+
+	arr := root.MustArray()
+	for i, node := range arr {
+		if i != node.Index() {
+			t.Errorf(fmt.Sprintf("Index() must be nil. got: %v", i))
+		}
+	}
+}
+
+func TestNode_Index_Fail(t *testing.T) {
+	tests := []struct {
+		name string
+		node *Node
+		want int
+	}{
+		{"nil node", (*Node)(nil), -1},
+		{"null node", NullNode(""), -1},
+		{"object node", ObjectNode("", nil), -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.node.Index(); got != tt.want {
+				t.Errorf("Index() = %v, want %v", got, tt.want)
+			}
+		})
+	
+	}
+}
+
+func TestNode_GetKey(t *testing.T) {
+	root, err := Unmarshal([]byte(`{"foo": true, "bar": null}`))
+	if err != nil {
+		t.Error("error occured while unmarshaling")
+	}
+
+	value, err := root.GetKey("foo")
+	if err != nil {
+		t.Errorf("error occured while getting key, %s", err)
+	}
+
+	if value.MustBool() != true {
+		t.Errorf("value is not matched. expected: true, got: %v", value.MustBool())
+	}
+
+	value, err = root.GetKey("bar")
+	if err != nil {
+		t.Errorf("error occured while getting key, %s", err)
+	}
+
+	_, err = root.GetKey("baz")
+	if err == nil {
+		t.Errorf("key baz is not exist. must be failed")
+	}
+
+	if value.MustNull() != nil {
+		t.Errorf("value is not matched. expected: nil, got: %v", value.MustNull())
+	}
+}
+
+func TestNode_GetKey_Fail(t *testing.T) {
+	tests := []simpleNode{
+		{"nil node", (*Node)(nil)},
+		{"null node", NullNode("")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := tt.node.GetKey(""); err == nil {
+				t.Errorf("%s should be an error", tt.name)
+			}
+		})
 	}
 }
 
@@ -383,6 +667,29 @@ func TestNode_EachKey(t *testing.T) {
 	}
 }
 
+func TestNode_IsEmpty(t *testing.T) {
+	tests := []struct{
+		name string
+		node *Node
+		expected bool
+	}{
+		{"nil node", (*Node)(nil), false}, // nil node is not empty.
+		{"null node", NullNode(""), true},
+		{"empty object", ObjectNode("", nil), true},
+		{"empty array", ArrayNode("", nil), true},
+		{"non-empty object", ObjectNode("", map[string]*Node{"foo": BoolNode("foo", true)}), false},
+		{"non-empty array", ArrayNode("", []*Node{BoolNode("0", true)}), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.node.Empty(); got != tt.expected {
+				t.Errorf("%s = %v, want %v", tt.name, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestNode_Index_EmptyList(t *testing.T) {
 	root, err := Unmarshal([]byte(`[]`))
 	if err != nil {
@@ -416,15 +723,20 @@ func TestNode_GetObject(t *testing.T) {
 	if _, ok := value["bar"]; !ok {
 		t.Errorf("root.GetObject() is corrupted: bar")
 	}
+}
 
-	root = NullNode("")
-	_, err = root.GetObject()
-	if err == nil {
-		t.Errorf("Error on root.GetArray(): NullNode")
+func TestNode_GetObject_Fail(t *testing.T) {
+	tests := []simpleNode{
+		{"nil node", (*Node)(nil)},
+		{"get object from null node", NullNode("")},
 	}
 
-	if _, err := (*Node)(nil).GetObject(); err == nil {
-		t.Errorf("(nil).GetObject() should be an error")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := tt.node.GetObject(); err == nil {
+				t.Errorf("%s should be an error", tt.name)
+			}
+		})
 	}
 }
 
@@ -620,6 +932,39 @@ func TestNode_Path(t *testing.T) {
 	if (*Node)(nil).Path() != "" {
 		t.Errorf("Wrong (nil).Path()")
 	}
+}
+
+func TestNode_Path2(t *testing.T) {
+    tests := []struct {
+        name string
+        node *Node
+        want string
+    }{
+        {
+            name: "Node with key",
+            node: &Node{
+                prev: &Node{},
+                key:  func() *string { s := "key"; return &s }(),
+            },
+            want: "$['key']",
+        },
+        {
+            name: "Node with index",
+            node: &Node{
+                prev: &Node{},
+                index: func() *int { i := 1; return &i }(),
+            },
+            want: "$[1]",
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            if got := tt.node.Path(); got != tt.want {
+                t.Errorf("Path() = %v, want %v", got, tt.want)
+            }
+        })
+    }
 }
 
 func contains(slice []string, item string) bool {

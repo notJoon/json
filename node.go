@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 type Node struct {
@@ -56,23 +57,6 @@ func (n *Node) Load() interface{} {
 	return n.value
 }
 
-func valueNode(prev *Node, key string, typ ValueType, val interface{}) *Node {
-	curr := &Node{
-		prev:     prev,
-		data:     nil,
-		key:      &key,
-		borders:  [2]int{0, 0},
-		value:    val,
-		modified: true,
-	}
-
-	if val != nil {
-		curr.nodeType = typ
-	}
-
-	return curr
-}
-
 func (n *Node) Key() *string {
 	if n == nil || n.key == nil {
 		return nil
@@ -116,6 +100,21 @@ func (n *Node) MustKey(key string) *Node {
 	return val
 }
 
+// TODO: retrieve the nested keys of the current node.
+func (n *Node) EachKey() []string {
+	if n == nil {
+		return nil
+	}
+
+	result := make([]string, 0, len(n.next))
+	for key := range n.next {
+		result = append(result, key)
+	}
+
+	return result
+}
+
+// Empty returns true if the current node is empty.
 func (n *Node) Empty() bool {
 	if n == nil {
 		return false
@@ -124,10 +123,12 @@ func (n *Node) Empty() bool {
 	return len(n.next) == 0
 }
 
+// Type returns the type (ValueType) of the current node.
 func (n *Node) Type() ValueType {
 	return n.nodeType
 }
 
+// Value returns the value of the current node.
 func (n *Node) Value() (value interface{}, err error) {
 	value = n.Load()
 
@@ -147,7 +148,7 @@ func (n *Node) Value() (value interface{}, err error) {
 		case String:
 			var ok bool
 
-			value, ok = Unquote(n.Source(), DoublyQuoteToken)
+			value, ok = Unquote(n.Source(), doubleQuote)
 			if !ok {
 				return "", errors.New("invalid string value")
 			}
@@ -195,20 +196,6 @@ func (n *Node) Size() int {
 	}
 
 	return len(n.next)
-}
-
-// TODO: retrieve the nested keys of the current node.
-func (n *Node) EachKey() []string {
-	if n == nil {
-		return nil
-	}
-
-	result := make([]string, 0, len(n.next))
-	for key := range n.next {
-		result = append(result, key)
-	}
-
-	return result
 }
 
 func (n *Node) Index() int {
@@ -321,6 +308,7 @@ func (n *Node) ready() bool {
 	return n.borders[1] != 0
 }
 
+// Source returns the source of the current node.
 func (n *Node) Source() []byte {
 	if n == nil {
 		return nil
@@ -346,6 +334,7 @@ func (n *Node) root() *Node {
 	return curr
 }
 
+// GetNull returns the null value if current node is null type.
 func (n *Node) GetNull() (interface{}, error) {
 	if n == nil {
 		return nil, errors.New("node is nil")
@@ -358,6 +347,16 @@ func (n *Node) GetNull() (interface{}, error) {
 	return nil, nil
 }
 
+func (n *Node) MustNull() interface{} {
+	v, err := n.GetNull()
+	if err != nil {
+		panic(err)
+	}
+
+	return v
+}
+
+// GetNumeric returns the numeric (int/float) value if current node is number type.
 func (n *Node) GetNumeric() (float64, error) {
 	if n == nil {
 		return 0, errors.New("node is nil")
@@ -380,6 +379,16 @@ func (n *Node) GetNumeric() (float64, error) {
 	return v, nil
 }
 
+func (n *Node) MustNumeric() float64 {
+	v, err := n.GetNumeric()
+	if err != nil {
+		panic(err)
+	}
+
+	return v
+}
+
+// GetString returns the string value if current node is string type.
 func (n *Node) GetString() (string, error) {
 	if n == nil {
 		return "", errors.New("string node is empty")
@@ -402,6 +411,16 @@ func (n *Node) GetString() (string, error) {
 	return v, nil
 }
 
+func (n *Node) MustString() string {
+	v, err := n.GetString()
+	if err != nil {
+		panic(err)
+	}
+
+	return v
+}
+
+// GetBool returns the boolean value if current node is boolean type.
 func (n *Node) GetBool() (bool, error) {
 	if n == nil {
 		return false, errors.New("node is nil")
@@ -424,7 +443,16 @@ func (n *Node) GetBool() (bool, error) {
 	return v, nil
 }
 
-// FIXME: currently, the array value is not stored in the node properly.
+func (n *Node) MustBool() bool {
+	v, err := n.GetBool()
+	if err != nil {
+		panic(err)
+	}
+
+	return v
+}
+
+// GetArray returns the array value if current node is array type.
 func (n *Node) GetArray() ([]*Node, error) {
 	if n == nil {
 		return nil, errors.New("node is nil")
@@ -447,6 +475,16 @@ func (n *Node) GetArray() ([]*Node, error) {
 	return v, nil
 }
 
+func (n *Node) MustArray() []*Node {
+	v, err := n.GetArray()
+	if err != nil {
+		panic(err)
+	}
+
+	return v
+}
+
+// GetObject returns the object value if current node is object type.
 func (n *Node) GetObject() (map[string]*Node, error) {
 	if n == nil {
 		return nil, errors.New("node is nil")
@@ -469,51 +507,6 @@ func (n *Node) GetObject() (map[string]*Node, error) {
 	return v, nil
 }
 
-func (n *Node) MustNull() interface{} {
-	v, err := n.GetNull()
-	if err != nil {
-		panic(err)
-	}
-
-	return v
-}
-
-func (n *Node) MustNumeric() float64 {
-	v, err := n.GetNumeric()
-	if err != nil {
-		panic(err)
-	}
-
-	return v
-}
-
-func (n *Node) MustString() string {
-	v, err := n.GetString()
-	if err != nil {
-		panic(err)
-	}
-
-	return v
-}
-
-func (n *Node) MustBool() bool {
-	v, err := n.GetBool()
-	if err != nil {
-		panic(err)
-	}
-
-	return v
-}
-
-func (n *Node) MustArray() []*Node {
-	v, err := n.GetArray()
-	if err != nil {
-		panic(err)
-	}
-
-	return v
-}
-
 func (n *Node) MustObject() map[string]*Node {
 	v, err := n.GetObject()
 	if err != nil {
@@ -523,23 +516,37 @@ func (n *Node) MustObject() map[string]*Node {
 	return v
 }
 
+// String converts the node to a string representation.
 func (n *Node) String() string {
 	return fmt.Sprintf("Node{key: %v, nodeType: %v, index: %v, borders: [%v, %v], modified: %v}",
 		*n.key, n.nodeType, *n.index, n.borders[0], n.borders[1], n.modified)
 }
 
+// Path builds the path of the current node.
+//
+// For example:
+//
+//	{ "key": { "sub": [ "val1", "val2" ] }}
+//
+// The path of "val2" is: $.key.sub[1]
 func (n *Node) Path() string {
 	if n == nil {
 		return ""
 	}
 
+	var sb strings.Builder
+
 	if n.prev == nil {
-		return "$"
+		sb.WriteString("$")
+	} else {
+		sb.WriteString(n.prev.Path())
+
+		if n.key != nil {
+			sb.WriteString("['" + *n.Key() + "']")
+		} else {
+			sb.WriteString("[" + strconv.Itoa(n.Index()) + "]")
+		}
 	}
 
-	if n.key != nil {
-		return n.prev.Path() + "['" + *n.Key() + "']"
-	}
-
-	return n.prev.Path() + "[" + strconv.Itoa(n.Index()) + "]"
+	return sb.String()
 }

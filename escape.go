@@ -7,12 +7,12 @@ import (
 )
 
 const (
-	supplementalPlanesOffset = 0x10000
-	highSurrogateOffset      = 0xD800
-	lowSurrogateOffset       = 0xDC00
+	supplementalPlanesOffset     = 0x10000
+	highSurrogateOffset          = 0xD800
+	lowSurrogateOffset           = 0xDC00
 	surrogateEnd                 = 0xDFFF
 	basicMultilingualPlaneOffset = 0xFFFF
-	badHex = -1
+	badHex                       = -1
 )
 
 var hexLookupTable = [256]int{
@@ -43,7 +43,7 @@ func h2i(c byte) int {
 // it returns the processed slice and any error encountered during the Unescape operation.
 func Unescape(input, output []byte) ([]byte, error) {
 	// find the index of the first backslash in the input slice.
-	firstBackslash := bytes.IndexByte(input, BackSlashToken)
+	firstBackslash := bytes.IndexByte(input, backSlash)
 	if firstBackslash == -1 {
 		return input, nil
 	}
@@ -70,7 +70,7 @@ func Unescape(input, output []byte) ([]byte, error) {
 		buf = buf[bufLen:]    // the number of bytes written to buf
 
 		// find the next backslash in the remaining input
-		nextBackslash := bytes.IndexByte(input, BackSlashToken)
+		nextBackslash := bytes.IndexByte(input, backSlash)
 		if nextBackslash == -1 {
 			copy(buf, input)
 			buf = buf[len(input):]
@@ -147,14 +147,14 @@ func decodeUnicodeEscape(b []byte) (rune, int) {
 }
 
 var escapeByteSet = [256]byte{
-	'"':  DoublyQuoteToken,
-	'\\': BackSlashToken,
-	'/':  SlashToken,
-	'b':  BackSpaceToken,
-	'f':  FormFeedToken,
-	'n':  NewLineToken,
-	'r':  CarriageReturnToken,
-	't':  TabToken,
+	'"':  doubleQuote,
+	'\\': backSlash,
+	'/':  slash,
+	'b':  backSpace,
+	'f':  formFeed,
+	'n':  newLine,
+	'r':  carriageReturn,
+	't':  tab,
 }
 
 // Unquote takes a byte slice and unquotes it by removing the surrounding quotes and unescaping the contents.
@@ -175,7 +175,7 @@ func unquoteBytes(s []byte, border byte) ([]byte, bool) {
 	for r < len(s) {
 		c := s[r]
 
-		if c == BackSlashToken || c == border || c < 0x20 {
+		if c == backSlash || c == border || c < 0x20 {
 			break
 		}
 
@@ -208,7 +208,7 @@ func unquoteBytes(s []byte, border byte) ([]byte, bool) {
 		}
 
 		c := s[r]
-		if c == BackSlashToken {
+		if c == backSlash {
 			r++
 			if r >= len(s) {
 				return nil, false
@@ -228,7 +228,7 @@ func unquoteBytes(s []byte, border byte) ([]byte, bool) {
 					return nil, false
 				}
 
-				if decode == DoublyQuoteToken || decode == BackSlashToken || decode == SlashToken {
+				if decode == doubleQuote || decode == backSlash || decode == slash {
 					decode = s[r]
 				}
 
@@ -270,7 +270,7 @@ func unquoteBytes(s []byte, border byte) ([]byte, bool) {
 // If the escape sequence is invalid, or if 'in' does not completely enclose the escape sequence,
 // function returns (-1, -1) to indicate an error.
 func processEscapedUTF8(in, out []byte) (inLen int, outLen int, err error) {
-	if len(in) < 2 || in[0] != BackSlashToken {
+	if len(in) < 2 || in[0] != backSlash {
 		return -1, -1, errors.New("invalid escape sequence")
 	}
 

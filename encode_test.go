@@ -1,6 +1,8 @@
 package json
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -62,6 +64,59 @@ func TestMarshal_Primitive(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMarshal_Object(t *testing.T) {
+	node := ObjectNode("", map[string]*Node{
+		"foo": StringNode("foo", "bar"),
+		"baz": NumberNode("baz", 100500),
+		"qux": NullNode("qux"),
+	})
+
+	mustKey := []string{"foo", "baz", "qux"}
+
+	value, err := Marshal(node)
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+	}
+
+	// the order of keys in the map is not guaranteed
+	// so we need to unmarshal the result and check the keys
+	decoded, err := Unmarshal(value)
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+	}
+
+	for _, key := range mustKey {
+		if node, err := decoded.GetKey(key); err != nil {
+			t.Errorf("unexpected error: %s", err)
+		} else {
+			if node == nil {
+				t.Errorf("node is nil")
+			} else if node.key == nil {
+				t.Errorf("key is nil")
+			} else if *node.key != key {
+				t.Errorf("wrong key: '%s', expected '%s'", *node.key, key)
+			}
+		}
+	}
+}
+
+func valueNode(prev *Node, key string, typ ValueType, val interface{}) *Node {
+	curr := &Node{
+		prev:     prev,
+		data:     nil,
+		key:      &key,
+		borders:  [2]int{0, 0},
+		value:    val,
+		modified: true,
+	}
+
+	if val != nil {
+		curr.nodeType = typ
+	}
+
+	return curr
 }
 
 func TestMarshal_Errors(t *testing.T) {
@@ -131,5 +186,47 @@ func TestMarshal_Errors(t *testing.T) {
 				t.Errorf("wrong result")
 			}
 		})
+	}
+}
+
+func TestMarshal_NotReadyNode(t *testing.T) {
+    node := &Node{
+        data:    nil, // data is nil
+        borders: [2]int{0, -1}, // borders length is not 2
+    }
+
+    _, err := Marshal(node)
+    if err == nil || !strings.Contains(err.Error(), "node is not ready") {
+        t.Errorf("Expected error for not ready node, got %v", err)
+    }
+}
+
+// BenchmarkGoStdMarshal-8   	 7871595	       127.7 ns/op	      56 B/op	       2 allocs/op
+// BenchmarkMarshal-8        	 3110293	       388.4 ns/op	     704 B/op	      12 allocs/op
+
+type benchMarshal struct {
+	Name  string `json:"name"`
+	Value int    `json:"value"`
+}
+
+func BenchmarkGoStdMarshal(b *testing.B) {
+	data := benchMarshal{Name: "test", Value: 100500}
+
+	for i := 0; i < b.N; i++ {
+		_, err := json.Marshal(data)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkMarshal(b *testing.B) {
+	data := `{"name":"test","value":100500}`
+
+	for i := 0; i < b.N; i++ {
+		_, err := Unmarshal([]byte(data))
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }

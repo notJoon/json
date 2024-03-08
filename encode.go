@@ -1,14 +1,13 @@
 package json
 
 import (
-	// "bytes"
+	"bytes"
 	"fmt"
 	"strconv"
 )
 
-// TODO: build bytes with bytes.Buffer
 func Marshal(node *Node) ([]byte, error) {
-	result := make([]byte, 0)
+	var buf bytes.Buffer
 	var (
 		sVal string
 		bVal bool
@@ -22,7 +21,7 @@ func Marshal(node *Node) ([]byte, error) {
 	} else if node.modified {
 		switch node.nodeType {
 		case Null:
-			result = append(result, nullLiteral...)
+			buf.Write(nullLiteral)
 
 		case Number:
 			nVal, err = node.GetNumeric()
@@ -31,7 +30,7 @@ func Marshal(node *Node) ([]byte, error) {
 			}
 
 			num := fmt.Sprintf("%g", nVal)
-			result = append(result, num...)
+			buf.WriteString(num)
 
 		case String:
 			sVal, err = node.GetString()
@@ -40,7 +39,7 @@ func Marshal(node *Node) ([]byte, error) {
 			}
 
 			quoted := fmt.Sprint(strconv.Quote(sVal))
-			result = append(result, quoted...)
+			buf.WriteString(quoted)
 
 		case Boolean:
 			bVal, err = node.GetBool()
@@ -49,14 +48,14 @@ func Marshal(node *Node) ([]byte, error) {
 			}
 
 			bStr := fmt.Sprintf("%t", bVal)
-			result = append(result, bStr...)
+			buf.WriteString(bStr)
 
 		case Array:
-			result = append(result, SquareOpenToken)
+			buf.WriteByte(bracketOpen)
 
 			for i := 0; i < len(node.next); i++ {
 				if i != 0 {
-					result = append(result, CommaToken)
+					buf.WriteByte(comma)
 				}
 
 				elem, ok := node.next[strconv.Itoa(i)]
@@ -69,35 +68,35 @@ func Marshal(node *Node) ([]byte, error) {
 					return nil, err
 				}
 
-				result = append(result, oVal...)
+				buf.Write(oVal)
 			}
 
-			result = append(result, SquareCloseToken)
+			buf.WriteByte(bracketClose)
 
 		case Object:
-			result = append(result, CurlyOpenToken)
+			buf.WriteByte(curlyOpen)
 
 			bVal = false
 			for k, v := range node.next {
 				if bVal {
-					result = append(result, CommaToken)
+					buf.WriteByte(comma)
 				} else {
 					bVal = true
 				}
 
 				key := fmt.Sprint(strconv.Quote(k))
-				result = append(result, key...)
-				result = append(result, ColonToken)
+				buf.WriteString(key)
+				buf.WriteByte(colon)
 
 				oVal, err = Marshal(v)
 				if err != nil {
 					return nil, err
 				}
 
-				result = append(result, oVal...)
+				buf.Write(oVal)
 			}
 
-			result = append(result, CurlyCloseToken)
+			buf.WriteByte(curlyClose)
 		}
 	} else if node.ready() {
 		return nil, fmt.Errorf("node is not ready")
@@ -105,5 +104,5 @@ func Marshal(node *Node) ([]byte, error) {
 		return nil, fmt.Errorf("node is not modified")
 	}
 
-	return result, nil
+	return buf.Bytes(), nil
 }

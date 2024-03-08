@@ -33,7 +33,7 @@ func (b *buffer) first() (byte, error) {
 	for ; b.index < b.length; b.index++ {
 		c := b.data[b.index]
 
-		if !(c == WhiteSpaceToken || c == CarriageReturnToken || c == NewLineToken || c == TabToken) {
+		if !(c == whiteSpace || c == carriageReturn || c == newLine || c == tab) {
 			return c, nil
 		}
 	}
@@ -166,11 +166,11 @@ func (b *buffer) skipUntil(endTokens map[byte]bool) (int, error) {
 // significantTokens is a map where the keys are the significant characters in a JSON path.
 // The values in the map are all true, which allows us to use the map as a set for quick lookups.
 var significantTokens = map[byte]bool{
-	DotToken:         true, // access properties of an object
-	DollarToken:      true, // root object
-	AtToken:          true, // current object in a filter expression
-	SquareOpenToken:  true, // start of an array index or filter expression
-	SquareCloseToken: true, // end of an array index or filter expression
+	dot:          true, // access properties of an object
+	dollarSign:   true, // root object
+	atSign:       true, // current object in a filter expression
+	bracketOpen:  true, // start of an array index or filter expression
+	bracketClose: true, // end of an array index or filter expression
 }
 
 // skipToNextSignificantToken advances the buffer index to the next significant character.
@@ -198,7 +198,7 @@ func (b *buffer) backslash() bool {
 
 	count := 0
 	for i := b.index - 1; ; i-- {
-		if i >= b.length || b.data[i] != BackSlashToken {
+		if i >= b.length || b.data[i] != backSlash {
 			break
 		}
 
@@ -214,19 +214,19 @@ func (b *buffer) backslash() bool {
 
 // numIndex holds a map of valid numeric characters
 var numIndex = map[byte]bool{
-    '0': true,
-    '1': true,
-    '2': true,
-    '3': true,
-    '4': true,
-    '5': true,
-    '6': true,
-    '7': true,
-    '8': true,
-    '9': true,
-    '.': true,
-    'e': true,
-    'E': true,
+	'0': true,
+	'1': true,
+	'2': true,
+	'3': true,
+	'4': true,
+	'5': true,
+	'6': true,
+	'7': true,
+	'8': true,
+	'9': true,
+	'.': true,
+	'e': true,
+	'E': true,
 }
 
 // pathToken checks if the current token is a valid JSON path token.
@@ -241,7 +241,7 @@ func (b *buffer) pathToken() error {
 		c := b.data[b.index]
 
 		switch {
-		case c == DoublyQuoteToken || c == QuoteToken:
+		case c == doubleQuote || c == singleQuote:
 			inToken = true
 			if err := b.step(); err != nil {
 				return errors.New("error stepping through buffer")
@@ -255,22 +255,22 @@ func (b *buffer) pathToken() error {
 				return errors.New("unmatched quote in path")
 			}
 
-		case c == SquareOpenToken || c == RoundOpenToken:
+		case c == bracketOpen || c == parenOpen:
 			inToken = true
 			stack = append(stack, c)
 
-		case c == SquareCloseToken || c == RoundCloseToken:
+		case c == bracketClose || c == parenClose:
 			inToken = true
-			if len(stack) == 0 || (c == SquareCloseToken && stack[len(stack)-1] != SquareOpenToken) || (c == RoundCloseToken && stack[len(stack)-1] != RoundOpenToken) {
+			if len(stack) == 0 || (c == bracketClose && stack[len(stack)-1] != bracketOpen) || (c == parenClose && stack[len(stack)-1] != parenOpen) {
 				return errors.New("mismatched bracket or parenthesis")
 			}
 
 			stack = stack[:len(stack)-1]
 
-		case bytes.ContainsAny([]byte{DotToken, CommaToken, DollarToken, AtToken, AesteriskToken, AndToken, OrToken}, string(c)) || ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z') || ('0' <= c && c <= '9'):
+		case bytes.ContainsAny([]byte{dot, comma, dollarSign, atSign, aesterisk, andSign, orSign}, string(c)) || ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z') || ('0' <= c && c <= '9'):
 			inToken = true
 
-		case c == PlusToken || c == MinusToken:
+		case c == plus || c == minus:
 			if inNumber || (b.index > 0 && numIndex[b.data[b.index-1]]) {
 				inToken = true
 			} else if !inToken && (b.index+1 < b.length && numIndex[b.data[b.index+1]]) {
@@ -313,7 +313,7 @@ func (b *buffer) numeric(token bool) error {
 	}
 
 	for ; b.index < b.length; b.index++ {
-		b.class = b.getClasses(DoublyQuoteToken)
+		b.class = b.getClasses(doubleQuote)
 		if b.class == __ {
 			return errors.New("invalid token found while parsing path")
 		}
@@ -350,7 +350,7 @@ func (b *buffer) getClasses(c byte) Classes {
 		return C_ETC
 	}
 
-	if c == QuoteToken {
+	if c == singleQuote {
 		return QuoteAsciiClasses[b.data[b.index]]
 	}
 
@@ -360,7 +360,7 @@ func (b *buffer) getClasses(c byte) Classes {
 func (b *buffer) getState() States {
 	b.last = b.state
 
-	b.class = b.getClasses(DoublyQuoteToken)
+	b.class = b.getClasses(doubleQuote)
 	if b.class == __ {
 		return __
 	}
