@@ -6,18 +6,6 @@ import (
 	"strconv"
 )
 
-// type NodeValue struct {
-// 	value     interface{}
-// 	innerType ValueType
-// }
-
-// func newNodeValue(value interface{}) *NodeValue {
-// 	return &NodeValue{
-// 		value:     value,
-// 		innerType: typeOf(value),
-// 	}
-// }
-
 type Node struct {
 	prev     *Node
 	next     map[string]*Node
@@ -68,17 +56,17 @@ func (n *Node) Load() interface{} {
 	return n.value
 }
 
-func valueNode(prev *Node, _key string, typ ValueType, val interface{}) *Node {
+func valueNode(prev *Node, key string, typ ValueType, val interface{}) *Node {
 	curr := &Node{
 		prev:     prev,
 		data:     nil,
+		key:      &key,
 		borders:  [2]int{0, 0},
 		value:    val,
 		modified: true,
 	}
 
 	if val != nil {
-		// curr.value = newNodeValue(val)
 		curr.nodeType = typ
 	}
 
@@ -154,18 +142,16 @@ func (n *Node) Value() (value interface{}, err error) {
 				return nil, err
 			}
 
-			// n.value = newNodeValue(value)
 			n.value = value
 
 		case String:
 			var ok bool
 
-			value, ok = unquote(n.Source(), DoublyQuoteToken)
+			value, ok = Unquote(n.Source(), DoublyQuoteToken)
 			if !ok {
 				return "", errors.New("invalid string value")
 			}
 
-			// n.value = newNodeValue(value)
 			n.value = value
 
 		case Boolean:
@@ -175,7 +161,6 @@ func (n *Node) Value() (value interface{}, err error) {
 
 			b := n.Source()[0]
 			value = b == 't' || b == 'T'
-			// n.value = newNodeValue(value)
 			n.value = value
 
 		case Array:
@@ -186,7 +171,6 @@ func (n *Node) Value() (value interface{}, err error) {
 			}
 
 			value = elems
-			// n.value = newNodeValue(value)
 			n.value = value
 
 		case Object:
@@ -197,7 +181,6 @@ func (n *Node) Value() (value interface{}, err error) {
 			}
 
 			value = obj
-			// n.value = newNodeValue(value)
 			n.value = value
 		}
 	}
@@ -205,6 +188,7 @@ func (n *Node) Value() (value interface{}, err error) {
 	return value, nil
 }
 
+// Size returns the number of sub-nodes of the current Array node.
 func (n *Node) Size() int {
 	if n == nil {
 		return 0
@@ -213,7 +197,8 @@ func (n *Node) Size() int {
 	return len(n.next)
 }
 
-func (n *Node) Keys() []string {
+// TODO: retrieve the nested keys of the current node.
+func (n *Node) EachKey() []string {
 	if n == nil {
 		return nil
 	}
@@ -536,4 +521,25 @@ func (n *Node) MustObject() map[string]*Node {
 	}
 
 	return v
+}
+
+func (n *Node) String() string {
+	return fmt.Sprintf("Node{key: %v, nodeType: %v, index: %v, borders: [%v, %v], modified: %v}",
+		*n.key, n.nodeType, *n.index, n.borders[0], n.borders[1], n.modified)
+}
+
+func (n *Node) Path() string {
+	if n == nil {
+		return ""
+	}
+
+	if n.prev == nil {
+		return "$"
+	}
+
+	if n.key != nil {
+		return n.prev.Path() + "['" + *n.Key() + "']"
+	}
+
+	return n.prev.Path() + "[" + strconv.Itoa(n.Index()) + "]"
 }

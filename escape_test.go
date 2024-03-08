@@ -132,28 +132,32 @@ func TestUnescapeToUTF8(t *testing.T) {
 		input       []byte
 		expectedIn  int
 		expectedOut int
+		isError     bool
 	}{
 		// valid escape sequences
-		{[]byte(`\n`), 2, 1},
-		{[]byte(`\t`), 2, 1},
-		{[]byte(`\u0041`), 6, 1},
-		{[]byte(`\u03B1`), 6, 2},
-		{[]byte(`\uD830\uDE03`), 12, 4},
+		{[]byte(`\n`), 2, 1, false},
+		{[]byte(`\t`), 2, 1, false},
+		{[]byte(`\u0041`), 6, 1, false},
+		{[]byte(`\u03B1`), 6, 2, false},
+		{[]byte(`\uD830\uDE03`), 12, 4, false},
 
 		// invalid escape sequences
-		{[]byte(`\`), -1, -1},            // incomplete escape sequence
-		{[]byte(`\x`), -1, -1},           // invalid escape character
-		{[]byte(`\u`), -1, -1},           // incomplete unicode escape sequence
-		{[]byte(`\u004`), -1, -1},        // invalid unicode escape sequence
-		{[]byte(`\uXYZW`), -1, -1},       // invalid unicode escape sequence
-		{[]byte(`\uD83D\u0041`), -1, -1}, // invalid unicode escape sequence
+		{[]byte(`\`), -1, -1, true},            // incomplete escape sequence
+		{[]byte(`\x`), -1, -1, true},           // invalid escape character
+		{[]byte(`\u`), -1, -1, true},           // incomplete unicode escape sequence
+		{[]byte(`\u004`), -1, -1, true},        // invalid unicode escape sequence
+		{[]byte(`\uXYZW`), -1, -1, true},       // invalid unicode escape sequence
+		{[]byte(`\uD83D\u0041`), -1, -1, true}, // invalid unicode escape sequence
 	}
 
 	for _, tc := range testCases {
 		input := make([]byte, len(tc.input))
 		copy(input, tc.input)
 		output := make([]byte, utf8.UTFMax)
-		inLen, outLen := processEscapedUTF8(input, output)
+		inLen, outLen, err := processEscapedUTF8(input, output)
+		if (err != nil) != tc.isError {
+			t.Errorf("processEscapedUTF8(%q) = %v; want %v", tc.input, err, tc.isError)
+		}
 
 		if inLen != tc.expectedIn || outLen != tc.expectedOut {
 			t.Errorf("processEscapedUTF8(%q) = (%d, %d); want (%d, %d)", tc.input, inLen, outLen, tc.expectedIn, tc.expectedOut)
@@ -176,7 +180,7 @@ func TestUnescape(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			output, _ := unescape(tc.input, make([]byte, len(tc.input)+10))
+			output, _ := Unescape(tc.input, make([]byte, len(tc.input)+10))
 			if !bytes.Equal(output, tc.expected) {
 				t.Errorf("unescape(%q) = %q; want %q", tc.input, output, tc.expected)
 			}

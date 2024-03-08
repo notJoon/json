@@ -10,18 +10,38 @@ const (
 	supplementalPlanesOffset = 0x10000
 	highSurrogateOffset      = 0xD800
 	lowSurrogateOffset       = 0xDC00
-
 	surrogateEnd                 = 0xDFFF
 	basicMultilingualPlaneOffset = 0xFFFF
-
 	badHex = -1
 )
 
-// unescape takes an input byte slice, processes it to unescape certain characters,
+var hexLookupTable = [256]int{
+	'0': 0x0, '1': 0x1, '2': 0x2, '3': 0x3, '4': 0x4,
+	'5': 0x5, '6': 0x6, '7': 0x7, '8': 0x8, '9': 0x9,
+	'A': 0xA, 'B': 0xB, 'C': 0xC, 'D': 0xD, 'E': 0xE, 'F': 0xF,
+	'a': 0xA, 'b': 0xB, 'c': 0xC, 'd': 0xD, 'e': 0xE, 'f': 0xF,
+	// Fill unspecified index-value pairs with key and value of -1
+	'G': -1, 'H': -1, 'I': -1, 'J': -1,
+	'K': -1, 'L': -1, 'M': -1, 'N': -1,
+	'O': -1, 'P': -1, 'Q': -1, 'R': -1,
+	'S': -1, 'T': -1, 'U': -1, 'V': -1,
+	'W': -1, 'X': -1, 'Y': -1, 'Z': -1,
+	'g': -1, 'h': -1, 'i': -1, 'j': -1,
+	'k': -1, 'l': -1, 'm': -1, 'n': -1,
+	'o': -1, 'p': -1, 'q': -1, 'r': -1,
+	's': -1, 't': -1, 'u': -1, 'v': -1,
+	'w': -1, 'x': -1, 'y': -1, 'z': -1,
+}
+
+func h2i(c byte) int {
+	return hexLookupTable[c]
+}
+
+// Unescape takes an input byte slice, processes it to Unescape certain characters,
 // and writes the result into an output byte slice.
 //
-// it returns the processed slice and any error encountered during the unescape operation.
-func unescape(input, output []byte) ([]byte, error) {
+// it returns the processed slice and any error encountered during the Unescape operation.
+func Unescape(input, output []byte) ([]byte, error) {
 	// find the index of the first backslash in the input slice.
 	firstBackslash := bytes.IndexByte(input, BackSlashToken)
 	if firstBackslash == -1 {
@@ -41,9 +61,9 @@ func unescape(input, output []byte) ([]byte, error) {
 	buf := output[firstBackslash:]
 
 	for len(input) > 0 {
-		inLen, bufLen := processEscapedUTF8(input, buf)
-		if inLen == -1 {
-			return nil, errors.New("invalid escape sequence in a string")
+		inLen, bufLen, err := processEscapedUTF8(input, buf)
+		if err != nil {
+			return nil, err
 		}
 
 		input = input[inLen:] // the number of bytes consumed in the input
@@ -126,7 +146,19 @@ func decodeUnicodeEscape(b []byte) (rune, int) {
 	return combineSurrogates(r, r2), 12
 }
 
-func unquote(s []byte, border byte) (t string, ok bool) {
+var escapeByteSet = [256]byte{
+	'"':  DoublyQuoteToken,
+	'\\': BackSlashToken,
+	'/':  SlashToken,
+	'b':  BackSpaceToken,
+	'f':  FormFeedToken,
+	'n':  NewLineToken,
+	'r':  CarriageReturnToken,
+	't':  TabToken,
+}
+
+// Unquote takes a byte slice and unquotes it by removing the surrounding quotes and unescaping the contents.
+func Unquote(s []byte, border byte) (t string, ok bool) {
 	s, ok = unquoteBytes(s, border)
 	t = string(s)
 	return
@@ -164,12 +196,13 @@ func unquoteBytes(s []byte, border byte) ([]byte, bool) {
 		return s, true
 	}
 
-	b := make([]byte, len(s)+utf8.UTFMax*2)
+	utfDoubleMax := utf8.UTFMax * 2
+	b := make([]byte, len(s)+utfDoubleMax)
 	w := copy(b, s[0:r])
 
 	for r < len(s) {
-		if w >= len(b)-(utf8.UTFMax*2) {
-			nb := make([]byte, (utf8.UTFMax+len(b))*2)
+		if w >= len(b)-utf8.UTFMax {
+			nb := make([]byte, utfDoubleMax+(2*len(b)))
 			copy(nb, b)
 			b = nb
 		}
@@ -190,29 +223,13 @@ func unquoteBytes(s []byte, border byte) ([]byte, bool) {
 				w += utf8.EncodeRune(b[w:], rr)
 				r += 5
 			} else {
-				var decode byte
-
-				switch s[r] {
-				case 'b':
-					decode = BackSpaceToken
-
-				case 'f':
-					decode = FormFeedToken
-
-				case 'n':
-					decode = NewLineToken
-
-				case 'r':
-					decode = CarriageReturnToken
-
-				case 't':
-					decode = TabToken
-
-				case border, BackSlashToken, SlashToken, QuoteToken:
-					decode = s[r]
-
-				default:
+				decode := escapeByteSet[s[r]]
+				if decode == 0 {
 					return nil, false
+				}
+
+				if decode == DoublyQuoteToken || decode == BackSlashToken || decode == SlashToken {
+					decode = s[r]
 				}
 
 				b[w] = decode
@@ -240,17 +257,6 @@ func unquoteBytes(s []byte, border byte) ([]byte, bool) {
 	return b[:w], true
 }
 
-var escapeByteSet = [256]byte{
-	'"':  DoublyQuoteToken,
-	'\\': BackSlashToken,
-	'/':  SlashToken,
-	'b':  BackSpaceToken,
-	'f':  FormFeedToken,
-	'n':  NewLineToken,
-	'r':  CarriageReturnToken,
-	't':  TabToken,
-}
-
 // processEscapedUTF8 processes the escape sequence in the given byte slice and
 // and converts them to UTF-8 characters. The function returns the length of the processed input and output.
 //
@@ -263,9 +269,9 @@ var escapeByteSet = [256]byte{
 //
 // If the escape sequence is invalid, or if 'in' does not completely enclose the escape sequence,
 // function returns (-1, -1) to indicate an error.
-func processEscapedUTF8(in, out []byte) (inLen int, outLen int) {
+func processEscapedUTF8(in, out []byte) (inLen int, outLen int, err error) {
 	if len(in) < 2 || in[0] != BackSlashToken {
-		return -1, -1
+		return -1, -1, errors.New("invalid escape sequence")
 	}
 
 	escapeSeqLen := 2
@@ -273,15 +279,15 @@ func processEscapedUTF8(in, out []byte) (inLen int, outLen int) {
 	if escapeChar == 'u' {
 		if r, size := decodeUnicodeEscape(in); size != -1 {
 			outLen = utf8.EncodeRune(out, r)
-			return size, outLen
+			return size, outLen, nil
 		}
 	} else {
 		val := escapeByteSet[escapeChar]
 		if val != 0 {
 			out[0] = val
-			return escapeSeqLen, 1
+			return escapeSeqLen, 1, nil
 		}
 	}
 
-	return -1, -1
+	return -1, -1, errors.New("invalid escape sequence")
 }

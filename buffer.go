@@ -128,11 +128,10 @@ func (b *buffer) skipAny(endTokens map[byte]bool) error {
 		tokens = append(tokens, string(token))
 	}
 
-	return errors.New(
-		fmt.Sprintf(
-			"EOF reached before encountering one of the expected tokens: %s",
-			strings.Join(tokens, ", "),
-		))
+	return fmt.Errorf(
+		"EOF reached before encountering one of the expected tokens: %s",
+		strings.Join(tokens, ", "),
+	)
 }
 
 // skipAndReturnIndex moves the buffer index forward by one and returns the new index.
@@ -213,6 +212,24 @@ func (b *buffer) backslash() bool {
 	return count%2 != 0
 }
 
+// numIndex holds a map of valid numeric characters
+var numIndex = map[byte]bool{
+    '0': true,
+    '1': true,
+    '2': true,
+    '3': true,
+    '4': true,
+    '5': true,
+    '6': true,
+    '7': true,
+    '8': true,
+    '9': true,
+    '.': true,
+    'e': true,
+    'E': true,
+}
+
+// pathToken checks if the current token is a valid JSON path token.
 func (b *buffer) pathToken() error {
 	var stack []byte
 
@@ -254,9 +271,9 @@ func (b *buffer) pathToken() error {
 			inToken = true
 
 		case c == PlusToken || c == MinusToken:
-			if inNumber || (b.index > 0 && bytes.ContainsAny([]byte("eE"), string(b.data[b.index-1]))) {
+			if inNumber || (b.index > 0 && numIndex[b.data[b.index-1]]) {
 				inToken = true
-			} else if !inToken && (b.index+1 < b.length && bytes.IndexByte([]byte("0123456789"), b.data[b.index+1]) != -1) {
+			} else if !inToken && (b.index+1 < b.length && numIndex[b.data[b.index+1]]) {
 				inToken = true
 				inNumber = true
 			} else if !inToken {
@@ -283,7 +300,7 @@ end:
 		return errors.New("no token found")
 	}
 
-	if inNumber && !bytes.ContainsAny([]byte("0123456789.eE"), string(b.data[b.index-1])) {
+	if inNumber && !numIndex[b.data[b.index-1]] {
 		inNumber = false
 	}
 

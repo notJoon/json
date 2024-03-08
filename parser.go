@@ -18,7 +18,7 @@ const unescapeStackBufSize = 64
 func ParseStringLiteral(data []byte) (string, error) {
 	var buf [unescapeStackBufSize]byte
 
-	bf, err := unescape(data, buf[:])
+	bf, err := Unescape(data, buf[:])
 	if err != nil {
 		return "", errors.New("invalid string input found while parsing string value")
 	}
@@ -166,24 +166,19 @@ func extractMantissaAndExp10(bytes []byte) (uint64, int, error) {
 	return man, exp10, nil
 }
 
-// typeOf check the type of the given value and returns the corresponding ValueType.
-func typeOf(v interface{}) ValueType {
-	switch v.(type) {
-	case string:
-		return String
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return Number
-	case float32, float64:
-		return Float
-	case bool:
-		return Boolean
-	case nil:
-		return Null
-	case map[string]interface{}:
-		return Object
-	case []interface{}:
-		return Array
-	default:
-		return Unknown
+func trimNegativeSign(bytes []byte) (neg bool, trimmed []byte) {
+	if bytes[0] == MinusToken {
+		return true, bytes[1:]
 	}
+
+	return false, bytes
+}
+
+func notDigit(c byte) bool {
+	return (c & 0xF0) != 0x30
+}
+
+// lower converts a byte to lower case if it is an uppercase letter.
+func lower(c byte) byte {
+	return c | 0x20
 }

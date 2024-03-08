@@ -5,6 +5,7 @@ import (
 	"io"
 )
 
+// State machine unmarshal taken from: https://github.com/spyzhov/ajson/blob/master/internal/state.go
 func Unmarshal(data []byte) (*Node, error) {
 	buf := newBuffer(data)
 
@@ -207,7 +208,7 @@ func getString(b *buffer) (*string, error) {
 		return nil, err
 	}
 
-	value, ok := unquote(b.data[start:b.index+1], DoublyQuoteToken)
+	value, ok := Unquote(b.data[start:b.index+1], DoublyQuoteToken)
 	if !ok {
 		return nil, unexpectedTokenError(b.data, start)
 	}

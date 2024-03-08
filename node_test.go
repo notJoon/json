@@ -7,7 +7,10 @@ import (
 	"testing"
 )
 
-var nilKey *string
+var (
+	nilKey   *string
+	dummyKey = "key"
+)
 
 type _args struct {
 	prev *Node
@@ -17,7 +20,6 @@ type _args struct {
 }
 
 func TestNode_CreateNewNode(t *testing.T) {
-	dummyKey := "key"
 	rel := &dummyKey
 
 	tests := []struct {
@@ -324,6 +326,63 @@ func TestNode_Size(t *testing.T) {
 	}
 }
 
+func TestNode_EachKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		json     string
+		expected []string
+	}{
+		{
+			name:     "simple foo/bar",
+			json:     `{"foo": true, "bar": null}`,
+			expected: []string{"foo", "bar"},
+		},
+		{
+			name:     "empty object",
+			json:     `{}`,
+			expected: []string{},
+		},
+		// {
+		// 	name: "complex object",
+		// 	json: `{
+		// 		"Image": {
+		// 			"Width":  800,
+		// 			"Height": 600,
+		// 			"Title":  "View from 15th Floor",
+		// 			"Thumbnail": {
+		// 				"Url":    "http://www.example.com/image/481989943",
+		// 				"Height": 125,
+		// 				"Width":  100
+		// 			},
+		// 			"Animated" : false,
+		// 			"IDs": [116, 943, 234, 38793]
+		// 		}
+		// 	}`,
+		// 	expected: []string{"Image", "Width", "Height", "Title", "Thumbnail", "Url", "Animated", "IDs"},
+		// },
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root, err := Unmarshal([]byte(tc.json))
+			if err != nil {
+				t.Errorf("error occured while unmarshaling")
+			}
+
+			value := root.EachKey()
+			if len(value) != len(tc.expected) {
+				t.Errorf("EachKey() must be %v. got: %v", len(tc.expected), len(value))
+			}
+
+			for _, key := range value {
+				if !contains(tc.expected, key) {
+					t.Errorf("EachKey() must be in %v. got: %v", tc.expected, key)
+				}
+			}
+		})
+	}
+}
+
 func TestNode_Index_EmptyList(t *testing.T) {
 	root, err := Unmarshal([]byte(`[]`))
 	if err != nil {
@@ -509,4 +568,65 @@ func compareNodes(n1, n2 *Node) bool {
 	}
 
 	return true
+}
+
+func TestNodeString(t *testing.T) {
+	rel := &dummyKey
+	node := &Node{
+		key:      rel,
+		nodeType: String,
+		index:    new(int),
+		borders:  [2]int{0, 1},
+		modified: true,
+	}
+
+	expected := "Node{key: key, nodeType: string, index: 0, borders: [0, 1], modified: true}"
+	if str := node.String(); str != expected {
+		t.Errorf("Expected '%s', but got '%s'", expected, str)
+	}
+}
+
+func TestNode_Path(t *testing.T) {
+	data := []byte(`{
+        "Image": {
+            "Width":  800,
+            "Height": 600,
+            "Title":  "View from 15th Floor",
+            "Thumbnail": {
+                "Url":    "http://www.example.com/image/481989943",
+                "Height": 125,
+                "Width":  100
+            },
+            "Animated" : false,
+            "IDs": [116, 943, 234, 38793]
+          }
+      }`)
+
+	root, err := Unmarshal(data)
+	if err != nil {
+		t.Errorf("Error on Unmarshal(): %s", err.Error())
+		return
+	}
+
+	if root.Path() != "$" {
+		t.Errorf("Wrong root.Path()")
+	}
+
+	element := root.MustKey("Image").MustKey("Thumbnail").MustKey("Url")
+	if element.Path() != "$['Image']['Thumbnail']['Url']" {
+		t.Errorf("Wrong path found: %s", element.Path())
+	}
+
+	if (*Node)(nil).Path() != "" {
+		t.Errorf("Wrong (nil).Path()")
+	}
+}
+
+func contains(slice []string, item string) bool {
+	for _, a := range slice {
+		if a == item {
+			return true
+		}
+	}
+	return false
 }
