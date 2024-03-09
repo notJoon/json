@@ -5,7 +5,14 @@ import (
 	"io"
 )
 
-// State machine unmarshal taken from: https://github.com/spyzhov/ajson/blob/master/internal/state.go
+// This limits the max nesting depth to prevent stack overflow.
+// This is permitted by https://tools.ietf.org/html/rfc7159#section-9
+const maxNestingDepth = 10000
+
+// State machine transition and grammar references
+// [1] https://github.com/spyzhov/ajson/blob/master/internal/state.go
+// [2] https://cs.opensource.google/go/go/+/refs/tags/go1.22.1:src/encoding/json/scanner.go
+
 func Unmarshal(data []byte) (*Node, error) {
 	buf := newBuffer(data)
 
@@ -13,6 +20,7 @@ func Unmarshal(data []byte) (*Node, error) {
 		state   States
 		key     *string
 		current *Node
+		nesting int
 		useKey  = func() **string {
 			tmp := cptrs(key)
 			key = nil
@@ -41,12 +49,20 @@ func Unmarshal(data []byte) (*Node, error) {
 					buf.state = CO
 				} else {
 					// string detected
+					if nesting >= maxNestingDepth {
+						return nil, fmt.Errorf("maximum nesting depth exceeded")
+					}
+
 					current, err = NewNode(current, buf, String, useKey())
 					if err != nil {
 						break
 					}
+					nesting++
 
 					err = buf.string(doubleQuote, false)
+					if err != nil {
+						return nil, err
+					}
 
 					current.borders[1] = buf.index + 1
 					buf.state = OK
@@ -63,6 +79,10 @@ func Unmarshal(data []byte) (*Node, error) {
 				}
 
 				err = buf.numeric(false)
+				if err != nil {
+					return nil, err
+				}
+
 				current.borders[1] = buf.index
 
 				buf.index -= 1
@@ -98,6 +118,10 @@ func Unmarshal(data []byte) (*Node, error) {
 				}
 
 				err = buf.word(nullLiteral)
+				if err != nil {
+					return nil, err
+				}
+
 				current.borders[1] = buf.index + 1
 				buf.state = OK
 
@@ -108,43 +132,51 @@ func Unmarshal(data []byte) (*Node, error) {
 		} else {
 			// region action
 			switch state {
-			case ec: // <empty> }
-				if key != nil {
-					err = unexpectedTokenError(buf.data, buf.index)
-				}
+				case ec, cc: // <empty> }
+                if key != nil {
+                    return nil, unexpectedTokenError(buf.data, buf.index)
+                }
 
-				fallthrough
+                if current != nil && current.IsObject() && !current.ready() {
+                    current.borders[1] = buf.index + 1
+                    if current.prev != nil {
+                        current = current.prev
+                        nesting--
+                    }
+                } else {
+                    return nil, unexpectedTokenError(buf.data, buf.index)
+                }
 
-			case cc: // }
-				if current != nil && current.IsObject() && !current.ready() {
-					current.borders[1] = buf.index + 1
-
-					if current.prev != nil {
-						current = current.prev
-					}
-				} else {
-					err = unexpectedTokenError(buf.data, buf.index)
-				}
-
-				buf.state = OK
+                buf.state = OK
 
 			case bc: // ]
 				if current != nil && current.IsArray() && !current.ready() {
 					current.borders[1] = buf.index + 1
 					if current.prev != nil {
 						current = current.prev
+						nesting--
 					}
 				} else {
-					err = unexpectedTokenError(buf.data, buf.index)
+					return nil, unexpectedTokenError(buf.data, buf.index)
 				}
 
 				buf.state = OK
 
 			case co: // {
+				if nesting >= maxNestingDepth {
+					return nil, fmt.Errorf("maximum nesting depth exceeded")
+				}
+				nesting++
+
 				current, err = NewNode(current, buf, Object, useKey())
 				buf.state = OB
 
 			case bo: // [
+				if nesting >= maxNestingDepth {
+					return nil, fmt.Errorf("maximum nesting depth exceeded")
+				}
+				nesting++
+
 				current, err = NewNode(current, buf, Array, useKey())
 				buf.state = AR
 
@@ -158,18 +190,18 @@ func Unmarshal(data []byte) (*Node, error) {
 				} else if current.IsArray() {
 					buf.state = VA // value expected
 				} else {
-					err = unexpectedTokenError(buf.data, buf.index)
+					return nil, unexpectedTokenError(buf.data, buf.index)
 				}
 
 			case cl: // :
 				if current == nil || !current.IsObject() || key == nil {
-					err = unexpectedTokenError(buf.data, buf.index)
+					return nil, unexpectedTokenError(buf.data, buf.index)
 				} else {
 					buf.state = VA
 				}
 
 			default:
-				err = unexpectedTokenError(buf.data, buf.index)
+				return nil, unexpectedTokenError(buf.data, buf.index)
 			}
 		}
 
