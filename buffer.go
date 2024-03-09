@@ -1,7 +1,6 @@
 package json
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -168,9 +167,16 @@ func (b *buffer) skipUntil(endTokens map[byte]bool) (int, error) {
 var significantTokens = map[byte]bool{
 	dot:          true, // access properties of an object
 	dollarSign:   true, // root object
-	atSign:       true, // current object in a filter expression
+	atSign:       true, // current object
 	bracketOpen:  true, // start of an array index or filter expression
 	bracketClose: true, // end of an array index or filter expression
+}
+
+// filterTokens stores the filter expression tokens.
+var filterTokens = map[byte]bool{
+    aesterisk: true, // wildcard
+    andSign:   true,
+    orSign:    true,
 }
 
 // skipToNextSignificantToken advances the buffer index to the next significant character.
@@ -267,7 +273,7 @@ func (b *buffer) pathToken() error {
 
 			stack = stack[:len(stack)-1]
 
-		case bytes.ContainsAny([]byte{dot, comma, dollarSign, atSign, aesterisk, andSign, orSign}, string(c)) || ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z') || ('0' <= c && c <= '9'):
+		case pathStateContainsValidPathToken(c):
 			inToken = true
 
 		case c == plus || c == minus:
@@ -305,6 +311,26 @@ end:
 	}
 
 	return nil
+}
+
+func pathStateContainsValidPathToken(c byte) bool {
+    if _, ok := significantTokens[c]; ok {
+        return true
+    }
+
+	if _, ok := filterTokens[c]; ok {
+		return true
+	}
+
+    if _, ok := numIndex[c]; ok {
+        return true
+    }
+
+    if 'A' <= c && c <= 'Z' || 'a' <= c && c <= 'z' {
+        return true
+    }
+
+    return false
 }
 
 func (b *buffer) numeric(token bool) error {
@@ -370,6 +396,7 @@ func (b *buffer) getState() States {
 	return b.state
 }
 
+// string parses a string token from the buffer.
 func (b *buffer) string(search byte, token bool) error {
 	if token {
 		b.last = GO
