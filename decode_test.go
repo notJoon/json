@@ -267,48 +267,70 @@ func TestUnmarshal_ArraySimpleCorrupted(t *testing.T) {
 	}
 }
 
-func generateNestedJSON(nestingLevel int) []byte {
-	var buf  bytes.Buffer
-	buf.WriteRune(bracketOpen)
+func generateNestedJSON(nestingLevel int, token rune) []byte {
+	var close rune
+	switch token {
+	case curlyOpen:
+		close = curlyClose
+	case bracketOpen:
+		close = bracketClose
+	case parenOpen:
+		close = parenClose
+	default:
+		return nil
+	}
 
-    generateNested(&buf, nestingLevel, 0)
+	var buf bytes.Buffer
+	buf.WriteRune(token)
 
-    buf.WriteRune(bracketClose)
-    return buf.Bytes()
+	generateNested(&buf, nestingLevel, 0)
+
+	buf.WriteRune(close)
+	return buf.Bytes()
 }
 
 func generateNested(buf *bytes.Buffer, nestingLevel, currentLevel int) {
-    if currentLevel == nestingLevel {
-        buf.WriteString("null")
-        return
-    }
+	if currentLevel == nestingLevel {
+		buf.WriteString("null")
+		return
+	}
 
-    buf.WriteRune(bracketOpen)
-    for i := 0; i < 2; i++ {
-        generateNested(buf, nestingLevel, currentLevel+1)
-        if i == 0 {
-            buf.WriteRune(comma)
-        }
-    }
+	buf.WriteRune(bracketOpen)
+	for i := 0; i < 2; i++ {
+		generateNested(buf, nestingLevel, currentLevel+1)
+		if i == 0 {
+			buf.WriteRune(comma)
+		}
+	}
 
 	buf.WriteRune(bracketClose)
 }
 
 func TestUnmarshalWithNestingLimit(t *testing.T) {
-    validJSON := []byte(`{"key": "value"}`)
+	validJSON := []byte(`{"key": "value"}`)
 
-    _, err := Unmarshal(validJSON)
-    if err != nil {
-        t.Errorf("Unmarshal failed with valid input: %v", err)
-    }
+	_, err := Unmarshal(validJSON)
+	if err != nil {
+		t.Errorf("Unmarshal failed with valid input: %v", err)
+	}
 
-    validJSON = generateNestedJSON(20)
-    _, err = Unmarshal([]byte(validJSON))
-    if err != nil {
+	validJSON = generateNestedJSON(20, bracketOpen)
+	_, err = Unmarshal([]byte(validJSON))
+	if err != nil {
 		t.Errorf("depth 20 must invalid: %v", err)
 	}
 
-	// TODO need to test for invalid depth JSON
+	validJSON = generateNestedJSON(20, parenOpen)
+	_, err = Unmarshal([]byte(validJSON))
+	if err == nil {
+		t.Errorf("depth 20 must be invalid")
+	}
+
+	validJSON = generateNestedJSON(20, curlyOpen)
+	_, err = Unmarshal([]byte(validJSON))
+	if err == nil {
+		t.Errorf("depth 20 must be invalid")
+	}
 }
 
 var glossary = `{

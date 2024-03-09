@@ -26,10 +26,10 @@ func Unmarshal(data []byte) (*Node, error) {
 			key = nil
 			return &tmp
 		}
+		err error
 	)
 
-	_, err := buf.first()
-	if err != nil {
+	if _, err = buf.first(); err != nil {
 		return nil, io.EOF
 	}
 
@@ -45,139 +45,122 @@ func Unmarshal(data []byte) (*Node, error) {
 			case ST: // string
 				if current != nil && current.IsObject() && key == nil {
 					// key detected
-					key, err = getString(buf)
+					if key, err = getString(buf); err != nil {
+						return nil, err
+					}
+
 					buf.state = CO
 				} else {
-					// string detected
-					if nesting >= maxNestingDepth {
-						return nil, fmt.Errorf("maximum nesting depth exceeded")
+					if nesting, err = checkNestingDepth(nesting); err != nil {
+						return nil, err
 					}
 
-					current, err = NewNode(current, buf, String, useKey())
-					if err != nil {
-						break
-					}
-					nesting++
-
-					err = buf.string(doubleQuote, false)
+					current, err = createNode(current, buf, String, useKey())
 					if err != nil {
 						return nil, err
 					}
 
-					current.borders[1] = buf.index + 1
-					buf.state = OK
-
-					if current.prev != nil {
-						current = current.prev
+					if err = buf.string(doubleQuote, false); err != nil {
+						return nil, err
 					}
+
+					current, nesting = updateNode(current, buf, nesting, true)
+					buf.state = OK
 				}
 
 			case MI, ZE, IN: // number
-				current, err = NewNode(current, buf, Number, useKey())
-				if err != nil {
-					break
+				if current, err = createNode(current, buf, Number, useKey()); err != nil {
+					return nil, err
 				}
 
-				err = buf.numeric(false)
-				if err != nil {
+				if err = buf.numeric(false); err != nil {
 					return nil, err
 				}
 
 				current.borders[1] = buf.index
+				if current.prev != nil {
+					current = current.prev
+				}
 
 				buf.index -= 1
 				buf.state = OK
 
-				if current.prev != nil {
-					current = current.prev
-				}
-
 			case T1, F1: // boolean
-				current, err = NewNode(current, buf, Boolean, useKey())
-				if err != nil {
-					break
-				}
-
-				if buf.state == T1 {
-					err = buf.word(trueLiteral)
-				} else {
-					err = buf.word(falseLiteral)
-				}
-
-				current.borders[1] = buf.index + 1
-				buf.state = OK
-
-				if current.prev != nil {
-					current = current.prev
-				}
-
-			case N1: // null
-				current, err = NewNode(current, buf, Null, useKey())
-				if err != nil {
-					break
-				}
-
-				err = buf.word(nullLiteral)
-				if err != nil {
+				if current, err = createNode(current, buf, Boolean, useKey()); err != nil {
 					return nil, err
 				}
 
-				current.borders[1] = buf.index + 1
+				var literal []byte
+				if buf.state == T1 {
+					literal = trueLiteral
+				} else {
+					literal = falseLiteral
+				}
+
+				if err = buf.word(literal); err != nil {
+					return nil, err
+				}
+
+				current, nesting = updateNode(current, buf, nesting, false)
 				buf.state = OK
 
-				if current.prev != nil {
-					current = current.prev
+			case N1: // null
+				if current, err = createNode(current, buf, Null, useKey()); err != nil {
+					return nil, err
 				}
+
+				if err = buf.word(nullLiteral); err != nil {
+					return nil, err
+				}
+
+				current, nesting = updateNode(current, buf, nesting, false)
+				buf.state = OK
 			}
 		} else {
 			// region action
 			switch state {
-				case ec, cc: // <empty> }
-                if key != nil {
-                    return nil, unexpectedTokenError(buf.data, buf.index)
-                }
-
-                if current != nil && current.IsObject() && !current.ready() {
-                    current.borders[1] = buf.index + 1
-                    if current.prev != nil {
-                        current = current.prev
-                        nesting--
-                    }
-                } else {
-                    return nil, unexpectedTokenError(buf.data, buf.index)
-                }
-
-                buf.state = OK
-
-			case bc: // ]
-				if current != nil && current.IsArray() && !current.ready() {
-					current.borders[1] = buf.index + 1
-					if current.prev != nil {
-						current = current.prev
-						nesting--
-					}
-				} else {
+			case ec, cc: // <empty> }
+				if key != nil {
 					return nil, unexpectedTokenError(buf.data, buf.index)
 				}
 
+				isVaildObject := current != nil && current.IsObject() && !current.ready()
+				if !isVaildObject {
+					return nil, unexpectedTokenError(buf.data, buf.index)
+				}
+
+				current, nesting = updateNode(current, buf, nesting, true)
+				buf.state = OK
+
+			case bc: // ]
+				isValidArray := current != nil && current.IsArray() && !current.ready()
+				if !isValidArray {
+					return nil, unexpectedTokenError(buf.data, buf.index)
+				}
+
+				current, nesting = updateNode(current, buf, nesting, true)
 				buf.state = OK
 
 			case co: // {
-				if nesting >= maxNestingDepth {
-					return nil, fmt.Errorf("maximum nesting depth exceeded")
+				if nesting, err = checkNestingDepth(nesting); err != nil {
+					return nil, err
 				}
-				nesting++
 
-				current, err = NewNode(current, buf, Object, useKey())
+				if current, err = createNode(current, buf, Object, useKey()); err != nil {
+					return nil, err
+				}
+
 				buf.state = OB
 
 			case bo: // [
-				if nesting >= maxNestingDepth {
-					return nil, fmt.Errorf("maximum nesting depth exceeded")
+				if nesting, err = checkNestingDepth(nesting); err != nil {
+					return nil, err
 				}
-				nesting++
 
-				current, err = NewNode(current, buf, Array, useKey())
+				if current, err = createNode(current, buf, Array, useKey()); err != nil {
+					return nil, err
+				}
+
 				buf.state = AR
 
 			case cm: // ,
@@ -196,17 +179,13 @@ func Unmarshal(data []byte) (*Node, error) {
 			case cl: // :
 				if current == nil || !current.IsObject() || key == nil {
 					return nil, unexpectedTokenError(buf.data, buf.index)
-				} else {
-					buf.state = VA
 				}
+
+				buf.state = VA
 
 			default:
 				return nil, unexpectedTokenError(buf.data, buf.index)
 			}
-		}
-
-		if err != nil {
-			return nil, err
 		}
 
 		if buf.step() != nil {
@@ -250,6 +229,36 @@ func getString(b *buffer) (*string, error) {
 
 func unexpectedTokenError(data []byte, index int) error {
 	return fmt.Errorf("unexpected token at index %d. data %b", index, data)
+}
+
+func createNode(current *Node, buf *buffer, nodeType ValueType, key **string) (*Node, error) {
+	var err error
+	current, err = NewNode(current, buf, nodeType, key)
+	if err != nil {
+		return nil, err
+	}
+	return current, nil
+}
+
+func updateNode(current *Node, buf *buffer, nesting int, decreaseLevel bool) (*Node, int) {
+	current.borders[1] = buf.index + 1
+	if current.prev != nil {
+		current = current.prev
+
+		if decreaseLevel {
+			nesting--
+		}
+	}
+
+	return current, nesting
+}
+
+func checkNestingDepth(nesting int) (int, error) {
+	if nesting >= maxNestingDepth {
+		return nesting, fmt.Errorf("maximum nesting depth exceeded")
+	}
+
+	return nesting + 1, nil
 }
 
 func cptrs(cpy *string) *string {

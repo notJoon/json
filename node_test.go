@@ -561,7 +561,7 @@ func TestNode_Index_Fail(t *testing.T) {
 				t.Errorf("Index() = %v, want %v", got, tt.want)
 			}
 		})
-	
+
 	}
 }
 
@@ -668,9 +668,9 @@ func TestNode_EachKey(t *testing.T) {
 }
 
 func TestNode_IsEmpty(t *testing.T) {
-	tests := []struct{
-		name string
-		node *Node
+	tests := []struct {
+		name     string
+		node     *Node
 		expected bool
 	}{
 		{"nil node", (*Node)(nil), false}, // nil node is not empty.
@@ -936,77 +936,77 @@ func TestNode_Path(t *testing.T) {
 }
 
 func TestNode_Path2(t *testing.T) {
-    tests := []struct {
-        name string
-        node *Node
-        want string
-    }{
-        {
-            name: "Node with key",
-            node: &Node{
-                prev: &Node{},
-                key:  func() *string { s := "key"; return &s }(),
-            },
-            want: "$['key']",
-        },
-        {
-            name: "Node with index",
-            node: &Node{
-                prev: &Node{},
-                index: func() *int { i := 1; return &i }(),
-            },
-            want: "$[1]",
-        },
-    }
+	tests := []struct {
+		name string
+		node *Node
+		want string
+	}{
+		{
+			name: "Node with key",
+			node: &Node{
+				prev: &Node{},
+				key:  func() *string { s := "key"; return &s }(),
+			},
+			want: "$['key']",
+		},
+		{
+			name: "Node with index",
+			node: &Node{
+				prev:  &Node{},
+				index: func() *int { i := 1; return &i }(),
+			},
+			want: "$[1]",
+		},
+	}
 
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            if got := tt.node.Path(); got != tt.want {
-                t.Errorf("Path() = %v, want %v", got, tt.want)
-            }
-        })
-    }
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.node.Path(); got != tt.want {
+				t.Errorf("Path() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestNode_Root(t *testing.T) {
-    root := &Node{}
-    child := &Node{prev: root}
-    grandChild := &Node{prev: child}
+	root := &Node{}
+	child := &Node{prev: root}
+	grandChild := &Node{prev: child}
 
-    tests := []struct {
-        name string
-        node *Node
-        want *Node
-    }{
-        {
-            name: "Root node",
-            node: root,
-            want: root,
-        },
-        {
-            name: "Child node",
-            node: child,
-            want: root,
-        },
-        {
-            name: "Grandchild node",
-            node: grandChild,
-            want: root,
-        },
+	tests := []struct {
+		name string
+		node *Node
+		want *Node
+	}{
+		{
+			name: "Root node",
+			node: root,
+			want: root,
+		},
+		{
+			name: "Child node",
+			node: child,
+			want: root,
+		},
+		{
+			name: "Grandchild node",
+			node: grandChild,
+			want: root,
+		},
 		{
 			name: "Node is nil",
 			node: nil,
 			want: nil,
 		},
-    }
+	}
 
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            if got := tt.node.root(); got != tt.want {
-                t.Errorf("root() = %v, want %v", got, tt.want)
-            }
-        })
-    }
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.node.root(); got != tt.want {
+				t.Errorf("root() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
 
 func contains(slice []string, item string) bool {

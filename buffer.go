@@ -174,9 +174,9 @@ var significantTokens = map[byte]bool{
 
 // filterTokens stores the filter expression tokens.
 var filterTokens = map[byte]bool{
-    aesterisk: true, // wildcard
-    andSign:   true,
-    orSign:    true,
+	aesterisk: true, // wildcard
+	andSign:   true,
+	orSign:    true,
 }
 
 // skipToNextSignificantToken advances the buffer index to the next significant character.
@@ -314,23 +314,23 @@ end:
 }
 
 func pathStateContainsValidPathToken(c byte) bool {
-    if _, ok := significantTokens[c]; ok {
-        return true
-    }
+	if _, ok := significantTokens[c]; ok {
+		return true
+	}
 
 	if _, ok := filterTokens[c]; ok {
 		return true
 	}
 
-    if _, ok := numIndex[c]; ok {
-        return true
-    }
+	if _, ok := numIndex[c]; ok {
+		return true
+	}
 
-    if 'A' <= c && c <= 'Z' || 'a' <= c && c <= 'z' {
-        return true
-    }
+	if 'A' <= c && c <= 'Z' || 'a' <= c && c <= 'z' {
+		return true
+	}
 
-    return false
+	return false
 }
 
 func (b *buffer) numeric(token bool) error {

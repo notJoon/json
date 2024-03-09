@@ -190,15 +190,83 @@ func TestMarshal_Errors(t *testing.T) {
 }
 
 func TestMarshal_NotReadyNode(t *testing.T) {
-    node := &Node{
-        data:    nil, // data is nil
-        borders: [2]int{0, -1}, // borders length is not 2
-    }
+	node := &Node{
+		data:    nil,           // data is nil
+		borders: [2]int{0, -1}, // borders length is not 2
+	}
 
-    _, err := Marshal(node)
-    if err == nil || !strings.Contains(err.Error(), "node is not ready") {
-        t.Errorf("Expected error for not ready node, got %v", err)
-    }
+	_, err := Marshal(node)
+	if err == nil || !strings.Contains(err.Error(), "node is not ready") {
+		t.Errorf("Expected error for not ready node, got %v", err)
+	}
+}
+
+func TestMarshal_Nil(t *testing.T) {
+	_, err := Marshal(nil)
+	if err == nil {
+		t.Error("Expected error for nil node, but got nil")
+	}
+}
+
+func TestMarshal_NotModified(t *testing.T) {
+	node := &Node{}
+	_, err := Marshal(node)
+	if err == nil {
+		t.Error("Expected error for not modified node, but got nil")
+	}
+}
+
+func TestMarshalCycleReference(t *testing.T) {
+	node1 := &Node{
+		key:      stringPtr("node1"),
+		nodeType: String,
+		next: map[string]*Node{
+			"next": nil,
+		},
+	}
+
+	node2 := &Node{
+		key:      stringPtr("node2"),
+		nodeType: String,
+		prev:     node1,
+	}
+
+	node1.next["next"] = node2
+
+	_, err := Marshal(node1)
+	if err == nil {
+		t.Error("Expected error for cycle reference, but got nil")
+	}
+}
+
+func TestMarshalNoCycleReference(t *testing.T) {
+	node1 := &Node{
+		key:      stringPtr("node1"),
+		nodeType: String,
+		value:    "value1",
+		modified: true,
+	}
+
+	node2 := &Node{
+		key:      stringPtr("node2"),
+		nodeType: String,
+		value:    "value2",
+		modified: true,
+	}
+
+	_, err := Marshal(node1)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	_, err = Marshal(node2)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+func stringPtr(s string) *string {
+	return &s
 }
 
 // BenchmarkGoStdMarshal-8   	 7871595	       127.7 ns/op	      56 B/op	       2 allocs/op
