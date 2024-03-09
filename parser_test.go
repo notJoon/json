@@ -136,6 +136,25 @@ func TestParseFloatWithScientificNotation(t *testing.T) {
 	}
 }
 
+func TestParseFloat_May_Interoperability_Problem(t *testing.T) {
+	tests := []struct {
+		input string
+		shouldErr bool
+	}{
+		{"3.141592653589793238462643383279", true},
+		{"1E400", false},   // TODO: should error
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func (t *testing.T) {
+			_, err := ParseFloatLiteral([]byte(tt.input))
+			if tt.shouldErr && err == nil {
+				t.Errorf("ParseFloatLiteral(%s): expected error, but not error", tt.input)
+			}
+		})
+	}
+}
+
 func TestParseIntLiteral(t *testing.T) {
 	tests := []struct {
 		input    string

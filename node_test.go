@@ -729,6 +729,7 @@ func TestNode_GetObject_Fail(t *testing.T) {
 	tests := []simpleNode{
 		{"nil node", (*Node)(nil)},
 		{"get object from null node", NullNode("")},
+		{"not object node", NumberNode("", 123)},
 	}
 
 	for _, tt := range tests {
@@ -962,6 +963,47 @@ func TestNode_Path2(t *testing.T) {
         t.Run(tt.name, func(t *testing.T) {
             if got := tt.node.Path(); got != tt.want {
                 t.Errorf("Path() = %v, want %v", got, tt.want)
+            }
+        })
+    }
+}
+
+func TestNode_Root(t *testing.T) {
+    root := &Node{}
+    child := &Node{prev: root}
+    grandChild := &Node{prev: child}
+
+    tests := []struct {
+        name string
+        node *Node
+        want *Node
+    }{
+        {
+            name: "Root node",
+            node: root,
+            want: root,
+        },
+        {
+            name: "Child node",
+            node: child,
+            want: root,
+        },
+        {
+            name: "Grandchild node",
+            node: grandChild,
+            want: root,
+        },
+		{
+			name: "Node is nil",
+			node: nil,
+			want: nil,
+		},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            if got := tt.node.root(); got != tt.want {
+                t.Errorf("root() = %v, want %v", got, tt.want)
             }
         })
     }

@@ -204,6 +204,8 @@ func TestUnquoteBytes(t *testing.T) {
 		{[]byte("\"\""), '"', []byte(""), true},
 		{[]byte("''"), '\'', []byte(""), true},
 		{[]byte("\"\\u0041\""), '"', []byte("A"), true},
+		{[]byte(`"Hello, 世界"`), '"', []byte("Hello, 世界"), true},
+		{[]byte(`"Hello, \x80"`), '"', nil, false},
 	}
 
 	for _, tc := range tests {
