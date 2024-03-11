@@ -6,6 +6,7 @@ import (
 	"strconv"
 )
 
+// Marshal returns the JSON encoding of a Node.
 func Marshal(node *Node) ([]byte, error) {
 	var buf bytes.Buffer
 	var (

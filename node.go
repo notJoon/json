@@ -8,17 +8,25 @@ import (
 )
 
 type Node struct {
+	// prev is the parent node of the current node.
 	prev     *Node
+	// next is the child nodes of the current node. // this is only available for object and array type nodes.
 	next     map[string]*Node
+	// key holds the key of the current node in the parent node.
 	key      *string
+	// JSON data
 	data     []byte
+	// value holds the value of the current node.
 	value    interface{}
 	nodeType ValueType
 	index    *int
-	borders  [2]int // start, end
+	// borders stores the start and end index of the current node in the data.
+	borders  [2]int
+	// modified indicates the current node is changed or not.
 	modified bool
 }
 
+// NewNode creates a new node instance with the given parent node, buffer, type, and key.
 func NewNode(prev *Node, b *buffer, typ ValueType, key **string) (*Node, error) {
 	curr := &Node{
 		prev:     prev,
@@ -53,14 +61,17 @@ func NewNode(prev *Node, b *buffer, typ ValueType, key **string) (*Node, error) 
 	return curr, nil
 }
 
+// Load retrieves the value of the current node.
 func (n *Node) Load() interface{} {
 	return n.value
 }
 
+// Changed checks the current node is changed or not.
 func (n *Node) Changed() bool {
 	return n.modified
 }
 
+// Key returns the key of the current node.
 func (n *Node) Key() string {
 	if n == nil || n.key == nil {
 		return ""
@@ -69,6 +80,7 @@ func (n *Node) Key() string {
 	return *n.key
 }
 
+// HasKey checks the current node has the given key or not.
 func (n *Node) HasKey(key string) bool {
 	if n == nil {
 		return false
@@ -78,6 +90,7 @@ func (n *Node) HasKey(key string) bool {
 	return ok
 }
 
+// GetKey returns the value of the given key from the current object node.
 func (n *Node) GetKey(key string) (*Node, error) {
 	if n == nil {
 		return nil, fmt.Errorf("node is nil")
@@ -95,6 +108,7 @@ func (n *Node) GetKey(key string) (*Node, error) {
 	return value, nil
 }
 
+// MustKey returns the value of the given key from the current object node.
 func (n *Node) MustKey(key string) *Node {
 	val, err := n.GetKey(key)
 	if err != nil {
@@ -104,6 +118,8 @@ func (n *Node) MustKey(key string) *Node {
 	return val
 }
 
+// EachKey traverses the current JSON nodes and collects all the keys.
+//
 // TODO: retrieve the nested keys of the current node.
 func (n *Node) EachKey() []string {
 	if n == nil {
@@ -193,13 +209,16 @@ func (n *Node) Value() (value interface{}, err error) {
 	return value, nil
 }
 
+// Set sets the value of the current node.
+//
+// If the given value is nil, it will be updated to null type.
 func (n *Node) Set(val interface{}) error {
 	if val == nil {
 		return n.SetNull()
 	}
 
 	switch result := val.(type) {
-		// TODO: support bigint kind (uin256, int256, etc.)
+		// TODO: support bigint kind (uin256, int256, etc.) if possible.
 		case float64, float32, int64, int32, int16, int8, int, uint64, uint32, uint16, uint8, uint:
 			if fval, err := numberKind2f64(val); err != nil {
 				return err
@@ -227,30 +246,51 @@ func (n *Node) Set(val interface{}) error {
 	}
 }
 
+// SetNull sets the current node to null type.
+//
+// If the current node is not null type, it will be updated to null type.
 func (n *Node) SetNull() error {
 	return n.update(Null, nil)
 }
 
+// SetNumber sets the current node to number type.
+//
+// If the current node is not number type, it will be updated to number type.
 func (n *Node) SetNumber(val float64) error {
 	return n.update(Number, val)
 }
 
+// SetString sets the current node to string type.
+//
+// If the current node is not string type, it will be updated to string type.
 func (n *Node) SetString(val string) error {
 	return n.update(String, val)
 }
 
+// SetBool sets the current node to boolean type.
+//
+// If the current node is not boolean type, it will be updated to boolean type.
 func (n *Node) SetBool(val bool) error {
 	return n.update(Boolean, val)
 }
 
+// SetArray sets the current node to array type.
+//
+// If the current node is not array type, it will be updated to array type.
 func (n *Node) SetArray(val []*Node) error {
 	return n.update(Array, val)
 }
 
+// SetObject sets the current node to object type.
+//
+// If the current node is not object type, it will be updated to object type.
 func (n *Node) SetObject(val map[string]*Node) error {
 	return n.update(Object, val)
 }
 
+// SetNode sets the current node to the given value type node.
+//
+// If the current node is not the same type as the given node, it will be updated to the given node type.
 func (n *Node) SetNode(val *Node) error {
 	if n == nil {
 		return errors.New("node is nil")
@@ -294,6 +334,7 @@ func (n *Node) Size() int {
 	return len(n.next)
 }
 
+// Index returns the index of the current node in the parent array node.
 func (n *Node) Index() int {
 	if n == nil {
 		return -1
@@ -306,6 +347,10 @@ func (n *Node) Index() int {
 	return *n.index
 }
 
+// MustIndex returns the array element at the given index.
+//
+// If the index is negative, it returns the index is from the end of the array.
+// Also, it panics if the index is not found.
 func (n *Node) MustIndex(expectIdx int) *Node {
 	val, err := n.GetIndex(expectIdx)
 	if err != nil {
@@ -315,6 +360,9 @@ func (n *Node) MustIndex(expectIdx int) *Node {
 	return val
 }
 
+// GetIndex returns the array element at the given index.
+//
+// if the index is negative, it returns the index is from the end of the array.
 func (n *Node) GetIndex(idx int) (*Node, error) {
 	if n == nil {
 		return nil, errors.New("node is nil")
@@ -324,7 +372,6 @@ func (n *Node) GetIndex(idx int) (*Node, error) {
 		return nil, errors.New("node is not array")
 	}
 
-	// if the index is negative, it means the index is from the end of the array.
 	if idx < 0 {
 		idx += len(n.next)
 	}
@@ -347,6 +394,7 @@ func (n *Node) DeleteIndex(idx int) error {
 	return node.remove(node)
 }
 
+// NullNode creates a new null type node.
 func NullNode(key string) *Node {
 	return &Node{
 		key:      &key,
@@ -356,6 +404,7 @@ func NullNode(key string) *Node {
 	}
 }
 
+// NumberNode creates a new number type node.
 func NumberNode(key string, value float64) *Node {
 	return &Node{
 		key:      &key,
@@ -365,6 +414,7 @@ func NumberNode(key string, value float64) *Node {
 	}
 }
 
+// StringNode creates a new string type node.
 func StringNode(key string, value string) *Node {
 	return &Node{
 		key:      &key,
@@ -374,6 +424,7 @@ func StringNode(key string, value string) *Node {
 	}
 }
 
+// BoolNode creates a new boolean type node.
 func BoolNode(key string, value bool) *Node {
 	return &Node{
 		key:      &key,
@@ -383,6 +434,9 @@ func BoolNode(key string, value bool) *Node {
 	}
 }
 
+// ArrayNode creates a new array type node.
+//
+// If the given value is nil, it creates an empty array node.
 func ArrayNode(key string, value []*Node) *Node {
 	curr := &Node{
 		key:      &key,
@@ -406,6 +460,11 @@ func ArrayNode(key string, value []*Node) *Node {
 	return curr
 }
 
+// ObjectNode creates a new object type node.
+//
+// If the given value is nil, it creates an empty object node.
+//
+// next is a map of key and value pairs of the object.
 func ObjectNode(key string, value map[string]*Node) *Node {
 	curr := &Node{
 		nodeType: Object,
@@ -429,14 +488,17 @@ func ObjectNode(key string, value map[string]*Node) *Node {
 	return curr
 }
 
+// IsArray returns true if the current node is array type.
 func (n *Node) IsArray() bool {
 	return n.nodeType == Array
 }
 
+// IsObject returns true if the current node is object type.
 func (n *Node) IsObject() bool {
 	return n.nodeType == Object
 }
 
+// IsNull returns true if the current node is null type.
 func (n *Node) IsBool() bool {
 	return n.nodeType == Boolean
 }
@@ -484,6 +546,9 @@ func (n *Node) GetNull() (interface{}, error) {
 	return nil, nil
 }
 
+// MustNull returns the null value if current node is null type.
+//
+// It panics if the current node is not null type.
 func (n *Node) MustNull() interface{} {
 	v, err := n.GetNull()
 	if err != nil {
@@ -516,6 +581,9 @@ func (n *Node) GetNumeric() (float64, error) {
 	return v, nil
 }
 
+// MustNumeric returns the numeric (int/float) value if current node is number type.
+//
+// It panics if the current node is not number type.
 func (n *Node) MustNumeric() float64 {
 	v, err := n.GetNumeric()
 	if err != nil {
@@ -548,6 +616,9 @@ func (n *Node) GetString() (string, error) {
 	return v, nil
 }
 
+// MustString returns the string value if current node is string type.
+//
+// It panics if the current node is not string type.
 func (n *Node) MustString() string {
 	v, err := n.GetString()
 	if err != nil {
@@ -580,6 +651,9 @@ func (n *Node) GetBool() (bool, error) {
 	return v, nil
 }
 
+// MustBool returns the boolean value if current node is boolean type.
+//
+// It panics if the current node is not boolean type.
 func (n *Node) MustBool() bool {
 	v, err := n.GetBool()
 	if err != nil {
@@ -612,6 +686,9 @@ func (n *Node) GetArray() ([]*Node, error) {
 	return v, nil
 }
 
+// MustArray returns the array value if current node is array type.
+//
+// It panics if the current node is not array type.
 func (n *Node) MustArray() []*Node {
 	v, err := n.GetArray()
 	if err != nil {
@@ -621,6 +698,9 @@ func (n *Node) MustArray() []*Node {
 	return v
 }
 
+// AppendArray appends the given values to the current array node.
+//
+// If the current node is not array type, it returns an error.
 func (n *Node) AppendArray(value ...*Node) error {
 	if !n.IsArray() {
 		return errors.New("can't append value to non-array node")
@@ -659,6 +739,9 @@ func (n *Node) GetObject() (map[string]*Node, error) {
 	return v, nil
 }
 
+// MustObject returns the object value if current node is object type.
+//
+// It panics if the current node is not object type.
 func (n *Node) MustObject() map[string]*Node {
 	v, err := n.GetObject()
 	if err != nil {
@@ -668,6 +751,9 @@ func (n *Node) MustObject() map[string]*Node {
 	return v
 }
 
+// AppendObject appends the given key and value to the current object node.
+//
+// If the current node is not object type, it returns an error.
 func (n *Node) AppendObject(key string, value *Node) error {
 	if !n.IsObject() {
 		return errors.New("can't append value to non-object node")
@@ -728,6 +814,7 @@ func (n *Node) Path() string {
 	return sb.String()
 }
 
+// update updates the current node value with the given type and value.
 func (n *Node) update(vt ValueType, val interface{}) error {
 	if err := n.validate(vt, val); err != nil {
 		return err
@@ -839,6 +926,7 @@ func (n *Node) validate(t ValueType, v interface{}) error {
 	return nil
 }
 
+// isContainer checks the current node type is array or object.
 func (n *Node) isContainer() bool {
 	return n.IsArray() || n.IsObject()
 }
@@ -878,6 +966,7 @@ func (n *Node) dropIndex(idx int) {
 	}
 }
 
+// append is a helper function to append the given value to the current container type node.
 func (n *Node) append(key *string, val *Node) error {
 	if n.isSameOrParentNode(val) {
 		return errors.New("can't append same or parent node")
@@ -939,6 +1028,7 @@ func (n *Node) setRef(prev *Node, key *string, idx *int) {
 	n.index = idx
 }
 
+// Clone creates a new node instance with the same value of the current node.
 func (n *Node) Clone() *Node {
 	node := n.clone()
 	node.setRef(nil, nil, nil)
