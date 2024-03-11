@@ -57,12 +57,16 @@ func (n *Node) Load() interface{} {
 	return n.value
 }
 
-func (n *Node) Key() *string {
+func (n *Node) Changed() bool {
+	return n.modified
+}
+
+func (n *Node) Key() string {
 	if n == nil || n.key == nil {
-		return nil
+		return ""
 	}
 
-	return n.key
+	return *n.key
 }
 
 func (n *Node) HasKey(key string) bool {
@@ -189,6 +193,98 @@ func (n *Node) Value() (value interface{}, err error) {
 	return value, nil
 }
 
+func (n *Node) Set(val interface{}) error {
+	if val == nil {
+		return n.SetNull()
+	}
+
+	switch result := val.(type) {
+		// TODO: support bigint kind (uin256, int256, etc.)
+		case float64, float32, int64, int32, int16, int8, int, uint64, uint32, uint16, uint8, uint:
+			if fval, err := numberKind2f64(val); err != nil {
+				return err
+			} else {
+				return n.SetNumber(fval)
+			}
+
+		case string:
+			return n.SetString(result)
+
+		case bool:
+			return n.SetBool(result)
+
+		case []*Node:
+			return n.SetArray(result)
+
+		case map[string]*Node:
+			return n.SetObject(result)
+
+		case *Node:
+			return n.SetNode(result)
+
+		default:
+			return errors.New("invalid value type")
+	}
+}
+
+func (n *Node) SetNull() error {
+	return n.update(Null, nil)
+}
+
+func (n *Node) SetNumber(val float64) error {
+	return n.update(Number, val)
+}
+
+func (n *Node) SetString(val string) error {
+	return n.update(String, val)
+}
+
+func (n *Node) SetBool(val bool) error {
+	return n.update(Boolean, val)
+}
+
+func (n *Node) SetArray(val []*Node) error {
+	return n.update(Array, val)
+}
+
+func (n *Node) SetObject(val map[string]*Node) error {
+	return n.update(Object, val)
+}
+
+func (n *Node) SetNode(val *Node) error {
+	if n == nil {
+		return errors.New("node is nil")
+	}
+
+	if n.isSameOrParentNode(val) {
+		return errors.New("can't append same or parent node")
+	}
+
+	node := val.Clone()
+	node.setRef(n.prev, n.key, n.index)
+	n.setRef(nil, nil, nil)
+
+	*n = *node
+	if n.prev != nil {
+		n.prev.mark()
+	}
+
+	return nil
+}
+
+// Delete removes the current node from the parent node.
+func (n *Node) Delete() error {
+	if n == nil {
+		return errors.New("can't delete nil node")
+	}
+
+	if n.prev == nil {
+		return nil
+	}
+
+	return n.prev.remove(n)
+}
+
 // Size returns the number of sub-nodes of the current Array node.
 func (n *Node) Size() int {
 	if n == nil {
@@ -208,6 +304,47 @@ func (n *Node) Index() int {
 	}
 
 	return *n.index
+}
+
+func (n *Node) MustIndex(expectIdx int) *Node {
+	val, err := n.GetIndex(expectIdx)
+	if err != nil {
+		panic(err)
+	}
+
+	return val
+}
+
+func (n *Node) GetIndex(idx int) (*Node, error) {
+	if n == nil {
+		return nil, errors.New("node is nil")
+	}
+
+	if n.nodeType != Array {
+		return nil, errors.New("node is not array")
+	}
+
+	// if the index is negative, it means the index is from the end of the array.
+	if idx < 0 {
+		idx += len(n.next)
+	}
+
+	child, ok := n.next[strconv.Itoa(idx)]
+	if !ok {
+		return nil, errors.New("index not found")
+	}
+
+	return child, nil
+}
+
+// DeleteIndex removes the array element at the given index.
+func (n *Node) DeleteIndex(idx int) error {
+	node, err := n.GetIndex(idx)
+	if err != nil {
+		return err
+	}
+
+	return node.remove(node)
 }
 
 func NullNode(key string) *Node {
@@ -484,6 +621,21 @@ func (n *Node) MustArray() []*Node {
 	return v
 }
 
+func (n *Node) AppendArray(value ...*Node) error {
+	if !n.IsArray() {
+		return errors.New("can't append value to non-array node")
+	}
+
+	for _, val := range value {
+		if err := n.append(nil, val); err != nil {
+			return err
+		}
+	}
+
+	n.mark()
+	return nil
+}
+
 // GetObject returns the object value if current node is object type.
 func (n *Node) GetObject() (map[string]*Node, error) {
 	if n == nil {
@@ -516,10 +668,35 @@ func (n *Node) MustObject() map[string]*Node {
 	return v
 }
 
+func (n *Node) AppendObject(key string, value *Node) error {
+	if !n.IsObject() {
+		return errors.New("can't append value to non-object node")
+	}
+
+	if err := n.append(&key, value); err != nil {
+		return err
+	}
+
+	n.mark()
+	return nil
+}
+
 // String converts the node to a string representation.
 func (n *Node) String() string {
-	return fmt.Sprintf("Node{key: %v, nodeType: %v, index: %v, borders: [%v, %v], modified: %v}",
-		*n.key, n.nodeType, *n.index, n.borders[0], n.borders[1], n.modified)
+	if n == nil {
+		return ""
+	}
+
+	if n.ready() && !n.modified {
+		return string(n.Source())
+	}
+
+	val, err := Marshal(n)
+	if err != nil {
+		return "error: " + err.Error()
+	}
+
+	return string(val)
 }
 
 // Path builds the path of the current node.
@@ -542,11 +719,249 @@ func (n *Node) Path() string {
 		sb.WriteString(n.prev.Path())
 
 		if n.key != nil {
-			sb.WriteString("['" + *n.Key() + "']")
+			sb.WriteString("['" + n.Key() + "']")
 		} else {
 			sb.WriteString("[" + strconv.Itoa(n.Index()) + "]")
 		}
 	}
 
 	return sb.String()
+}
+
+func (n *Node) update(vt ValueType, val interface{}) error {
+	if err := n.validate(vt, val); err != nil {
+		return err
+	}
+
+	n.mark()
+	n.clear()
+
+	n.nodeType = vt
+	n.value = nil
+
+	if val != nil {
+		switch vt {
+		case Array:
+			nodes := val.([]*Node)
+			n.next = make(map[string]*Node, len(nodes))
+
+			for _, node := range nodes {
+				tn := node
+				if err := n.append(nil, tn); err != nil {
+					return err
+				}
+			}
+
+		case Object:
+			obj := val.(map[string]*Node)
+			n.next = make(map[string]*Node, len(obj))
+
+			for key, node := range obj {
+				tk := key
+				tn := node
+
+				if err := n.append(&tk, tn); err != nil {
+					return err
+				}
+			}
+
+		default:
+			n.value = val
+		}
+	}
+
+	return nil
+}
+
+// mark marks the current node as modified.
+func (n *Node) mark() {
+	node := n
+	for node != nil && !node.modified {
+		node.modified = true
+		node = node.prev
+	}
+}
+
+// clear clears the current node's value
+func (n *Node) clear() {
+	n.data = nil
+	n.borders[1] = 0
+
+	for key := range n.next {
+		n.next[key].prev = nil
+	}
+
+	n.next = nil
+}
+
+// validate checks the current node value is matching the given type.
+func (n *Node) validate(t ValueType, v interface{}) error {
+	if n == nil {
+		return errors.New("node is nil")
+	}
+
+	switch t {
+	case Null:
+		if v != nil {
+			return errors.New("invalid null value")
+		}
+
+	// TODO: support uint256, int256 type later.
+	case Number:
+		switch v.(type) {
+		case float64, int, uint:
+			return nil
+		default:
+			return errors.New("invalid number value")
+		}
+
+	case String:
+		if _, ok := v.(string); !ok {
+			return errors.New("invalid string value")
+		}
+
+	case Boolean:
+		if _, ok := v.(bool); !ok {
+			return errors.New("invalid boolean value")
+		}
+
+	case Array:
+		if _, ok := v.([]*Node); !ok {
+			return errors.New("invalid array value")
+		}
+
+	case Object:
+		if _, ok := v.(map[string]*Node); !ok {
+			return errors.New("invalid object value")
+		}
+	}
+
+	return nil
+}
+
+func (n *Node) isContainer() bool {
+	return n.IsArray() || n.IsObject()
+}
+
+// remove removes the value from the current container type node.
+func (n *Node) remove(v *Node) error {
+	if !n.isContainer() {
+		return fmt.Errorf("can't remove value from non-array or non-object node. got=%s", n.Type().String())
+	}
+
+	if v.prev != n {
+		return errors.New("invalid parent node")
+	}
+
+	n.mark()
+	if n.IsArray() {
+		delete(n.next, strconv.Itoa(*v.index))
+		n.dropIndex(*v.index)
+	} else {
+		delete(n.next, *v.key)
+	}
+
+	v.prev = nil
+	return nil
+}
+
+// dropIndex rebase the index of current array node values.
+func (n *Node) dropIndex(idx int) {
+	for i := idx + 1; i <= len(n.next); i++ {
+		prv := i - 1
+		if curr, ok := n.next[strconv.Itoa(i)]; ok {
+			curr.index = &prv
+			n.next[strconv.Itoa(prv)] = curr
+		}
+
+		delete(n.next, strconv.Itoa(i))
+	}
+}
+
+func (n *Node) append(key *string, val *Node) error {
+	if n.isSameOrParentNode(val) {
+		return errors.New("can't append same or parent node")
+	}
+
+	if val.prev != nil {
+		if err := val.prev.remove(val); err != nil {
+			return err
+		}
+	}
+
+	val.prev = n
+	val.key = key
+
+	if key == nil {
+		size := len(n.next)
+		val.index = &size
+		n.next[strconv.Itoa(size)] = val
+	} else {
+		if old, ok := n.next[*key]; ok {
+			if err := n.remove(old); err != nil {
+				return err
+			}
+		}
+		n.next[*key] = val
+	}
+
+	return nil
+}
+
+func (n *Node) isSameOrParentNode(nd *Node) bool {
+	return n == nd || n.isParentNode(nd)
+}
+
+func (n *Node) isParentNode(nd *Node) bool {
+	if n == nil {
+		return false
+	}
+
+	for curr := nd.prev; curr != nil; curr = curr.prev {
+		if curr == n {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (n *Node) setRef(prev *Node, key *string, idx *int) {
+	n.prev = prev
+
+	if key == nil {
+		n.key = nil
+	} else {
+		tmp := *key
+		n.key = &tmp
+	}
+
+	n.index = idx
+}
+
+func (n *Node) Clone() *Node {
+	node := n.clone()
+	node.setRef(nil, nil, nil)
+
+	return node
+}
+
+func (n *Node) clone() *Node {
+	node := &Node{
+		prev:     n.prev,
+		next:     make(map[string]*Node, len(n.next)),
+		key:      n.key,
+		data:     n.data,
+		value:    n.value,
+		nodeType: n.nodeType,
+		index:    n.index,
+		borders:  n.borders,
+		modified: n.modified,
+	}
+
+	for k, v := range n.next {
+		node.next[k] = v
+	}
+
+	return node
 }

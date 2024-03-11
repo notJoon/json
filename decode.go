@@ -9,7 +9,7 @@ import (
 // This is permitted by https://tools.ietf.org/html/rfc7159#section-9
 const maxNestingDepth = 10000
 
-// State machine transition and grammar references
+// State machine transition logic and grammar references
 // [1] https://github.com/spyzhov/ajson/blob/master/internal/state.go
 // [2] https://cs.opensource.google/go/go/+/refs/tags/go1.22.1:src/encoding/json/scanner.go
 
@@ -124,8 +124,7 @@ func Unmarshal(data []byte) (*Node, error) {
 					return nil, unexpectedTokenError(buf.data, buf.index)
 				}
 
-				isVaildObject := current != nil && current.IsObject() && !current.ready()
-				if !isVaildObject {
+				if !isValidContainerType(current, Object) {
 					return nil, unexpectedTokenError(buf.data, buf.index)
 				}
 
@@ -133,8 +132,7 @@ func Unmarshal(data []byte) (*Node, error) {
 				buf.state = OK
 
 			case bc: // ]
-				isValidArray := current != nil && current.IsArray() && !current.ready()
-				if !isValidArray {
+				if !isValidContainerType(current, Array) {
 					return nil, unexpectedTokenError(buf.data, buf.index)
 				}
 
@@ -198,18 +196,27 @@ func Unmarshal(data []byte) (*Node, error) {
 		}
 	}
 
-	var root *Node
 	if current == nil || buf.state != OK {
 		return nil, io.EOF
-	} else {
-		root = current.root()
-		if !root.ready() {
-			err = io.EOF
-			root = nil
-		}
+	}
+
+	root := current.root()
+	if !root.ready() {
+		return nil, io.EOF
 	}
 
 	return root, err
+}
+
+func isValidContainerType(current *Node, nodeType ValueType) bool {
+    switch nodeType {
+    case Object:
+        return current != nil && current.IsObject() && !current.ready()
+    case Array:
+        return current != nil && current.IsArray() && !current.ready()
+    default:
+        return false
+    }
 }
 
 // getString extracts a string from the buffer and advances the buffer index past the string.
@@ -237,17 +244,21 @@ func createNode(current *Node, buf *buffer, nodeType ValueType, key **string) (*
 	if err != nil {
 		return nil, err
 	}
+
 	return current, nil
 }
 
 func updateNode(current *Node, buf *buffer, nesting int, decreaseLevel bool) (*Node, int) {
 	current.borders[1] = buf.index + 1
-	if current.prev != nil {
-		current = current.prev
 
-		if decreaseLevel {
-			nesting--
-		}
+	prev := current.prev
+	if prev == nil {
+		return current, nesting
+	}
+
+	current = prev
+	if decreaseLevel {
+		nesting--
 	}
 
 	return current, nesting

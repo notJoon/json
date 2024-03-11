@@ -449,3 +449,36 @@ func (b *buffer) word(bs []byte) error {
 
 	return nil
 }
+
+func numberKind2f64(value interface{}) (result float64, err error) {
+	switch typed := value.(type) {
+	case float64:
+		result = typed
+	case float32:
+		result = float64(typed)
+	case int:
+		result = float64(typed)
+	case int8:
+		result = float64(typed)
+	case int16:
+		result = float64(typed)
+	case int32:
+		result = float64(typed)
+	case int64:
+		result = float64(typed)
+	case uint:
+		result = float64(typed)
+	case uint8:
+		result = float64(typed)
+	case uint16:
+		result = float64(typed)
+	case uint32:
+		result = float64(typed)
+	case uint64:
+		result = float64(typed)
+	default:
+		err = fmt.Errorf("invalid number type: %T", value)
+	}
+
+	return
+}

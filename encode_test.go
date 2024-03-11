@@ -2,7 +2,6 @@ package json
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 )
 
@@ -186,18 +185,6 @@ func TestMarshal_Errors(t *testing.T) {
 				t.Errorf("wrong result")
 			}
 		})
-	}
-}
-
-func TestMarshal_NotReadyNode(t *testing.T) {
-	node := &Node{
-		data:    nil,           // data is nil
-		borders: [2]int{0, -1}, // borders length is not 2
-	}
-
-	_, err := Marshal(node)
-	if err == nil || !strings.Contains(err.Error(), "node is not ready") {
-		t.Errorf("Expected error for not ready node, got %v", err)
 	}
 }
 

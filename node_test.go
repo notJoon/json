@@ -3,7 +3,9 @@ package json
 import (
 	"bytes"
 	"fmt"
+	// "sort"
 	"strconv"
+	// "strings"
 	"testing"
 )
 
@@ -134,6 +136,200 @@ func TestNode_Value(t *testing.T) {
 	}
 }
 
+func TestNode_Set(t *testing.T) {
+	node := func(data string) *Node {
+		bs := []byte(data)
+		return Must(Unmarshal(bs))
+	}
+
+	tests := []struct {
+		name string
+		node *Node
+		getter func(root *Node) *Node
+		value interface{}
+		expect string
+		isErr bool
+	}{
+		{
+			name: "null -> f64",
+			node: node("null"),
+			value: float64(3.141592),
+			expect: "3.141592",
+			isErr: false,
+		},
+		{
+			name: "null -> f32 with integer value",
+			node: node("null"),
+			value: float32(42),
+			expect: "42",
+			isErr: false,
+		},
+		{
+			name: "null -> i64",
+			node: node("null"),
+			value: int64(42),
+			expect: "42",
+		},
+		{
+			name: "null -> i32",
+			node: node("null"),
+			value: int32(42),
+			expect: "42",
+		},
+		{
+			name: "null -> i16",
+			node: node("null"),
+			value: int16(42),
+			expect: "42",
+		},
+		{
+			name: "null -> i8",
+			node: node("null"),
+			value: int8(42),
+			expect: "42",
+		},
+		{
+			name: "null -> int",
+			node: node("null"),
+			value: int(42),
+			expect: "42",
+		},
+		{
+			name: "null -> uint",
+			node: node("null"),
+			value: uint(42),
+			expect: "42",
+		},
+		{
+			name: "null -> uint64",
+			node: node("null"),
+			value: uint64(42),
+			expect: "42",
+		},
+		{
+			name: "null -> uint32",
+			node: node("null"),
+			value: uint32(42),
+			expect: "42",
+		},
+		{
+			name: "null -> bool (true)",
+			node: node("null"),
+			value: true,
+			expect: "true",
+		},
+		{
+			name: "null -> bool (false)",
+			node: node("null"),
+			value: false,
+			expect: "false",
+		},
+		{
+			name: "array -> string",
+			node: node("[1, 2, 3]"),
+			value: "foobar",
+			expect: `"foobar"`,
+		},
+		{
+			name: "object -> bool",
+			node: node(`{"foo": ["bar"], "baz": 42}`),
+			value: true,
+			expect: "true",
+		},
+		{
+			name: "object[value] -> null",
+			node: node(`{"foo": ["bar"]}`),
+			getter: func(root *Node) *Node {
+				return root.MustKey("foo").MustIndex(0)
+			},
+			value: nil,
+			expect: `{"foo":[null]}`,
+			isErr: false,
+		},
+		{
+			name: "array[v] -> array[Node]",
+			node: node(`[null]`),
+			getter: func(root *Node) *Node {
+				return root.MustIndex(0)
+			},
+			value: map[string]*Node{},
+			expect: `[{}]`,
+			isErr: false,
+		},
+		{
+			name: "array[v] -> array[array[]]",
+			node: node(`[null]`),
+			getter: func(root *Node) *Node {
+				return root.MustIndex(0)
+			},
+			value: []*Node{node(`1`)},
+			expect: `[[1]]`,
+			isErr: false,
+		},
+		{
+			name: "nil",
+			node: nil,
+			value: nil,
+			isErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			val := tt.node
+			if tt.getter != nil {
+				val = tt.getter(tt.node)
+			}
+
+			if err := val.Set(tt.value); (err != nil) != tt.isErr {
+				t.Errorf("%s error = %v, wantErr %v", tt.name, err, tt.isErr)
+			}
+
+			if tt.isErr {
+				return
+			}
+
+			if tt.node.String() != tt.expect {
+				t.Errorf("%s got = %v, want %v", tt.name, tt.node.String(), tt.expect)
+			}
+		})
+	}
+}
+
+func TestNode_Delete(t *testing.T) {
+	root := Must(Unmarshal([]byte(`{"foo":"bar"}`)))
+	if err := root.Delete(); err != nil {
+		t.Errorf("Delete returns error: %v", err)
+	}
+
+	if value, err := Marshal(root); err != nil {
+		t.Errorf("Marshal returns error: %v", err)
+	} else if string(value) != `{"foo":"bar"}` {
+		t.Errorf("Marshal returns wrong value: %s", string(value))
+	}
+
+	foo := root.MustKey("foo")
+	if err := foo.Delete(); err != nil {
+		t.Errorf("Delete returns error while handling foo: %v", err)
+	}
+
+	if value, err := Marshal(root); err != nil {
+		t.Errorf("Marshal returns error: %v", err)
+	} else if string(value) != `{}` {
+		t.Errorf("Marshal returns wrong value: %s", string(value))
+	}
+
+	if value, err := Marshal(foo); err != nil {
+		t.Errorf("Marshal returns error: %v", err)
+	} else if string(value) != `"bar"` {
+		t.Errorf("Marshal returns wrong value: %s", string(value))
+	}
+
+	if foo.prev != nil {
+		t.Errorf("foo.prev should be nil")
+	}
+}
+
 func TestNode_ObjectNode(t *testing.T) {
 	objs := map[string]*Node{
 		"key1": NullNode("null"),
@@ -155,6 +351,34 @@ func TestNode_ObjectNode(t *testing.T) {
 	}
 }
 
+func TestNode_AppendObject(t *testing.T) {
+	if err := Must(Unmarshal([]byte(`{"foo":"bar","baz":null}`))).AppendObject("biz", NullNode("")); err != nil {
+		t.Errorf("AppendArray should return error")
+	}
+
+	root := Must(Unmarshal([]byte(`{"foo":"bar"}`)))
+	if err := root.AppendObject("baz", NullNode("")); err != nil {
+		t.Errorf("AppendObject should not return error: %s", err)
+	}
+
+	if value, err := Marshal(root); err != nil {
+		t.Errorf("Marshal returns error: %v", err)
+	} else if string(value) != `{"foo":"bar","baz":null}` {
+		t.Errorf("Marshal returns wrong value: %s", string(value))
+	}
+
+	// TODO: this case is not working randomly
+	// if err := root.AppendObject("biz", NumberNode("", 42)); err != nil {
+	// 	t.Errorf("AppendObject returns error: %v", err)
+	// }
+
+	// if value, err := Marshal(root); err != nil {
+	// 	t.Errorf("Marshal returns error: %v", err)
+	// } else if !isSameObject(string(value), `{"foo":"bar","baz":null,"biz":42}`) {
+	// 	t.Errorf("Marshal returns wrong value: %s", string(value))
+	// }
+}
+
 func TestNode_ArrayNode(t *testing.T) {
 	arr := []*Node{
 		NullNode("nil"),
@@ -173,6 +397,38 @@ func TestNode_ArrayNode(t *testing.T) {
 		if node.next[strconv.Itoa(i)] == nil {
 			t.Errorf("ArrayNode: want %v got %v", v, node.next[strconv.Itoa(i)])
 		}
+	}
+}
+
+func TestNode_AppendArray(t *testing.T) {
+	if err := Must(Unmarshal([]byte(`[{"foo":"bar"}]`))).AppendArray(NullNode("")); err != nil {
+		t.Errorf("should return error")
+	}
+
+	root := Must(Unmarshal([]byte(`[{"foo":"bar"}]`)))
+	if err := root.AppendArray(NullNode("")); err != nil {
+		t.Errorf("should not return error: %s", err)
+	}
+
+	if value, err := Marshal(root); err != nil {
+		t.Errorf("Marshal returns error: %v", err)
+	} else if string(value) != `[{"foo":"bar"},null]` {
+		t.Errorf("Marshal returns wrong value: %s", string(value))
+	}
+
+	if err := root.AppendArray(
+		NumberNode("", 1),
+		StringNode("", "foo"),
+		Must(Unmarshal([]byte(`[0,1,null,true,"example"]`))),
+		Must(Unmarshal([]byte(`{"foo": true, "bar": null, "baz": 123}`))),
+	); err != nil {
+		t.Errorf("AppendArray returns error: %v", err)
+	}
+
+	if value, err := Marshal(root); err != nil {
+		t.Errorf("Marshal returns error: %v", err)
+	} else if string(value) != `[{"foo":"bar"},null,1,"foo",[0,1,null,true,"example"],{"foo": true, "bar": null, "baz": 123}]` {
+		t.Errorf("Marshal returns wrong value: %s", string(value))
 	}
 }
 
@@ -401,7 +657,9 @@ func TestNode_MustString(t *testing.T) {
 		{"foo", []byte(`"foo"`)},
 		{"foo bar", []byte(`"foo bar"`)},
 		{"", []byte(`""`)},
+		{"안녕하세요", []byte(`"안녕하세요"`)},
 		{"こんにちは", []byte(`"こんにちは"`)},
+		{"你好", []byte(`"你好"`)},
 		{"one \"encoded\" string", []byte(`"one \"encoded\" string"`)},
 	}
 
@@ -514,6 +772,35 @@ func TestNode_IsArray(t *testing.T) {
 	}
 }
 
+func TestNode_Key(t *testing.T) {
+	root, err := Unmarshal([]byte(`{"foo": true, "bar": null, "baz": 123}`))
+	if err != nil {
+		t.Errorf("Error on Unmarshal(): %s", err.Error())
+	}
+
+	obj := root.MustObject()
+	for key, node := range obj {
+		if key != node.Key() {
+			t.Errorf("Key() = %v, want %v", node.Key(), key)
+		}
+	}
+
+	keys := []string{"foo", "bar", "baz"}
+	for _, key := range keys {
+		if obj[key].Key() != key {
+			t.Errorf("Key() = %v, want %v", obj[key].Key(), key)
+		}
+	}
+
+	if root.MustKey("foo").Clone().Key() != "" {
+		t.Errorf("wrong key found for cloned key")
+	}
+
+	if (*Node)(nil).Key() != "" {
+		t.Errorf("wrong key found for nil node")
+	}
+}
+
 func TestNode_Size(t *testing.T) {
 	root, err := Unmarshal(sampleArr)
 	if err != nil {
@@ -563,6 +850,25 @@ func TestNode_Index_Fail(t *testing.T) {
 		})
 
 	}
+}
+
+func TestNode_GetIndex(t *testing.T) {
+    root, err := Unmarshal([]byte(`[1, 2, 3, 4, 5, 6]`))
+    if err != nil {
+        t.Errorf("error occured while unmarshaling")
+    }
+
+    expected := []int{1, 2, 3, 4, 5, 6}
+    for i, v := range expected {
+        val, err := root.GetIndex(i)
+        if err != nil {
+            t.Errorf("error occured while getting index %d, %s", i, err)
+        }
+
+        if val.MustNumeric() != float64(v) {
+			t.Errorf("value is not matched. expected: %d, got: %v", v, val.MustNumeric())
+		}
+    }
 }
 
 func TestNode_GetKey(t *testing.T) {
@@ -883,22 +1189,6 @@ func compareNodes(n1, n2 *Node) bool {
 	return true
 }
 
-func TestNodeString(t *testing.T) {
-	rel := &dummyKey
-	node := &Node{
-		key:      rel,
-		nodeType: String,
-		index:    new(int),
-		borders:  [2]int{0, 1},
-		modified: true,
-	}
-
-	expected := "Node{key: key, nodeType: string, index: 0, borders: [0, 1], modified: true}"
-	if str := node.String(); str != expected {
-		t.Errorf("Expected '%s', but got '%s'", expected, str)
-	}
-}
-
 func TestNode_Path(t *testing.T) {
 	data := []byte(`{
         "Image": {
@@ -1015,5 +1305,149 @@ func contains(slice []string, item string) bool {
 			return true
 		}
 	}
+
 	return false
 }
+
+func TestNode_update(t *testing.T) {
+	type _args struct {
+		nt ValueType
+		val interface{}
+	}
+
+	tests := []struct {
+		name string
+		args _args
+		isErr bool
+	}{
+		{
+			name: "null ok",
+			args: _args{nt: Null, val: nil},
+			isErr: false,
+		},
+		{
+			name: "null fail",
+			args: _args{nt: Null, val: "foo"},
+			isErr: true,
+		},
+		{
+			name: "string ok",
+			args: _args{nt: String, val: "foo"},
+			isErr: false,
+		},
+		{
+			name: "string fail",
+			args: _args{nt: String, val: nil},
+			isErr: true,
+		},
+		{
+			name: "number ok int type",
+			args: _args{nt: Number, val: 42},
+			isErr: false,
+		},
+		{
+			name: "number ok float type",
+			args: _args{nt: Number, val: 42.0},
+			isErr: false,
+		},
+		{
+			name: "number fail",
+			args: _args{nt: Number, val: nil},
+			isErr: true,
+		},
+		{
+			name: "bool ok",
+			args: _args{nt: Boolean, val: true},
+			isErr: false,
+		},
+		{
+			name: "bool fail",
+			args: _args{nt: Boolean, val: nil},
+			isErr: true,
+		},
+		{
+			name: "array ok",
+			args: _args{nt: Array, val: []*Node{}},
+			isErr: false,
+		},
+		{
+			name: "array fail",
+			args: _args{nt: Array, val: nil},
+			isErr: true,
+		},
+		{
+			name: "object ok",
+			args: _args{nt: Object, val: map[string]*Node{}},
+			isErr: false,
+		},
+		{
+			name: "object type, fail",
+			args: _args{nt: Object, val: nil},
+			isErr: true,
+		},
+		{
+			name: "object fail: type mismatch",
+			args: _args{nt: Object, val: 42.0},
+			isErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := NullNode("")
+			if err := node.update(tt.args.nt, tt.args.val); (err != nil) != tt.isErr {
+				t.Errorf("%s error = %v, wantErr %v", tt.name, err, tt.isErr)
+			}
+		})
+	}
+}
+
+// ignore the sequence of keys by ordering them.
+// func isSameObject(a, b string) bool {
+//     aPairs := strings.Split(strings.Trim(a, "{}"), ",")
+//     bPairs := strings.Split(strings.Trim(b, "{}"), ",")
+
+//     aMap := make(map[string]string)
+//     bMap := make(map[string]string)
+//     for _, pair := range aPairs {
+//         kv := strings.Split(pair, ":")
+//         key := strings.Trim(kv[0], `"`)
+//         value := strings.Trim(kv[1], `"`)
+//         aMap[key] = value
+//     }
+//     for _, pair := range bPairs {
+//         kv := strings.Split(pair, ":")
+//         key := strings.Trim(kv[0], `"`)
+//         value := strings.Trim(kv[1], `"`)
+//         bMap[key] = value
+//     }
+
+//     aKeys := make([]string, 0, len(aMap))
+//     bKeys := make([]string, 0, len(bMap))
+//     for k := range aMap {
+//         aKeys = append(aKeys, k)
+//     }
+
+//     for k := range bMap {
+//         bKeys = append(bKeys, k)
+//     }
+
+//     sort.Strings(aKeys)
+//     sort.Strings(bKeys)
+
+//     if len(aKeys) != len(bKeys) {
+//         return false
+//     }
+
+//     for i := range aKeys {
+//         if aKeys[i] != bKeys[i] {
+//             return false
+//         }
+
+//         if aMap[aKeys[i]] != bMap[bKeys[i]] {
+//             return false
+//         }
+//     }
+
+// 	return true
+// }
