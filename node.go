@@ -9,19 +9,19 @@ import (
 
 type Node struct {
 	// prev is the parent node of the current node.
-	prev     *Node
+	prev *Node
 	// next is the child nodes of the current node. // this is only available for object and array type nodes.
-	next     map[string]*Node
+	next map[string]*Node
 	// key holds the key of the current node in the parent node.
-	key      *string
+	key *string
 	// JSON data
-	data     []byte
+	data []byte
 	// value holds the value of the current node.
 	value    interface{}
 	nodeType ValueType
 	index    *int
 	// borders stores the start and end index of the current node in the data.
-	borders  [2]int
+	borders [2]int
 	// modified indicates the current node is changed or not.
 	modified bool
 }
@@ -118,20 +118,35 @@ func (n *Node) MustKey(key string) *Node {
 	return val
 }
 
-// EachKey traverses the current JSON nodes and collects all the keys.
-//
-// TODO: retrieve the nested keys of the current node.
+// EachKey traverses the current JSON nodes and collects all the unique keys.
 func (n *Node) EachKey() []string {
-	if n == nil {
-		return nil
-	}
+    var collectKeys func(*Node) []string
+    collectKeys = func(node *Node) []string {
+        if node == nil {
+            return nil
+        }
 
-	result := make([]string, 0, len(n.next))
-	for key := range n.next {
-		result = append(result, key)
-	}
+        if !node.IsObject() {
+            return nil
+        }
 
-	return result
+        result := make(map[string]bool)
+        for key, childNode := range node.next {
+            result[key] = true
+            childKeys := collectKeys(childNode)
+            for _, childKey := range childKeys {
+                result[childKey] = true
+            }
+        }
+
+        keys := make([]string, 0, len(result))
+        for key := range result {
+            keys = append(keys, key)
+        }
+        return keys
+    }
+
+    return collectKeys(n)
 }
 
 // Empty returns true if the current node is empty.
@@ -218,32 +233,32 @@ func (n *Node) Set(val interface{}) error {
 	}
 
 	switch result := val.(type) {
-		// TODO: support bigint kind (uin256, int256, etc.) if possible.
-		case float64, float32, int64, int32, int16, int8, int, uint64, uint32, uint16, uint8, uint:
-			f, err := numberKind2f64(val)
-			if err != nil {
-				return err
-			}
+	// TODO: support bigint kind (uin256, int256, etc.) if possible.
+	case float64, float32, int64, int32, int16, int8, int, uint64, uint32, uint16, uint8, uint:
+		f, err := numberKind2f64(val)
+		if err != nil {
+			return err
+		}
 
-			return n.SetNumber(f)
+		return n.SetNumber(f)
 
-		case string:
-			return n.SetString(result)
+	case string:
+		return n.SetString(result)
 
-		case bool:
-			return n.SetBool(result)
+	case bool:
+		return n.SetBool(result)
 
-		case []*Node:
-			return n.SetArray(result)
+	case []*Node:
+		return n.SetArray(result)
 
-		case map[string]*Node:
-			return n.SetObject(result)
+	case map[string]*Node:
+		return n.SetObject(result)
 
-		case *Node:
-			return n.SetNode(result)
+	case *Node:
+		return n.SetNode(result)
 
-		default:
-			return errors.New("invalid value type")
+	default:
+		return errors.New("invalid value type")
 	}
 }
 
@@ -628,6 +643,33 @@ func (n *Node) MustString() string {
 
 	return v
 }
+
+// GetBools traverses the current JSON nodes and collects all boolean values.
+func (n *Node) GetBools() []bool {
+	var collectBools func(*Node) []bool
+	collectBools = func(node *Node) []bool {
+		if node == nil {
+			return nil
+		}
+
+		result := []bool{}
+		if node.nodeType == Boolean {
+			if boolVal, err := node.GetBool(); err == nil {
+				result = append(result, boolVal)
+			}
+		}
+
+		for _, childNode := range node.next {
+			childBools := collectBools(childNode)
+			result = append(result, childBools...)
+		}
+
+		return result
+	}
+
+	return collectBools(n)
+}
+
 
 // GetBool returns the boolean value if current node is boolean type.
 func (n *Node) GetBool() (bool, error) {
