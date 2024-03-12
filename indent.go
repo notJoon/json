@@ -16,13 +16,13 @@ const indentGrowthFactor = 2
 // 1. For top-level arrays and objects, no additional indentation is applied.
 //
 // 2. For nested structures like arrays within arrays or objects, indentation increases.
-// 
+//
 // 3. Indentation is applied after opening brackets ('[' or '{') and before closing brackets (']' or '}').
-// 
+//
 // 4. Commas and colons are handled appropriately to maintain valid JSON format.
-// 
+//
 // 5. Nested arrays within objects or arrays receive new lines and indentation based on their depth level.
-// 
+//
 // The function returns the formatted JSON as a byte slice and an error if any issues occurred during formatting.
 func Indent(data []byte, indent string) ([]byte, error) {
 	var (

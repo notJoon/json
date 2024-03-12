@@ -100,7 +100,7 @@ func Marshal(node *Node) ([]byte, error) {
 			buf.WriteByte(curlyClose)
 		}
 	} else if node.ready() {
-		buf.Write(node.Source())
+		buf.Write(node.source())
 	} else {
 		return nil, fmt.Errorf("node is not modified")
 	}

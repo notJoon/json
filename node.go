@@ -7,23 +7,17 @@ import (
 	"strings"
 )
 
+// Node represents a JSON node.
 type Node struct {
-	// prev is the parent node of the current node.
-	prev *Node
-	// next is the child nodes of the current node. // this is only available for object and array type nodes.
-	next map[string]*Node
-	// key holds the key of the current node in the parent node.
-	key *string
-	// JSON data
-	data []byte
-	// value holds the value of the current node.
-	value    interface{}
-	nodeType ValueType
-	index    *int
-	// borders stores the start and end index of the current node in the data.
-	borders [2]int
-	// modified indicates the current node is changed or not.
-	modified bool
+	prev     *Node            // prev is the parent node of the current node.
+	next     map[string]*Node // next is the child nodes of the current node.
+	key      *string          // key holds the key of the current node in the parent node.
+	data     []byte           // byte slice of JSON data
+	value    interface{}      // value holds the value of the current node.
+	nodeType ValueType        // NodeType holds the type of the current node. (Object, Array, String, Number, Boolean, Null)
+	index    *int             // index holds the index of the current node in the parent array node.
+	borders  [2]int           // borders stores the start and end index of the current node in the data.
+	modified bool             // modified indicates the current node is changed or not.
 }
 
 // NewNode creates a new node instance with the given parent node, buffer, type, and key.
@@ -61,8 +55,8 @@ func NewNode(prev *Node, b *buffer, typ ValueType, key **string) (*Node, error) 
 	return curr, nil
 }
 
-// Load retrieves the value of the current node.
-func (n *Node) Load() interface{} {
+// load retrieves the value of the current node.
+func (n *Node) load() interface{} {
 	return n.value
 }
 
@@ -118,36 +112,35 @@ func (n *Node) MustKey(key string) *Node {
 	return val
 }
 
-// EachKey traverses the current JSON nodes and collects all the unique keys.
-func (n *Node) EachKey() []string {
-    var collectKeys func(*Node) []string
-    collectKeys = func(node *Node) []string {
-        if node == nil {
-            return nil
-        }
+// UniqueKeys traverses the current JSON nodes and collects all the unique keys.
+func (n *Node) UniqueKeys() []string {
+	var collectKeys func(*Node) []string
+	collectKeys = func(node *Node) []string {
+		if node == nil || !node.IsObject() {
+			return nil
+		}
 
-        if !node.IsObject() {
-            return nil
-        }
+		result := make(map[string]bool)
+		for key, childNode := range node.next {
+			result[key] = true
+			childKeys := collectKeys(childNode)
+			for _, childKey := range childKeys {
+				result[childKey] = true
+			}
+		}
 
-        result := make(map[string]bool)
-        for key, childNode := range node.next {
-            result[key] = true
-            childKeys := collectKeys(childNode)
-            for _, childKey := range childKeys {
-                result[childKey] = true
-            }
-        }
+		keys := make([]string, 0, len(result))
+		for key := range result {
+			keys = append(keys, key)
+		}
+		return keys
+	}
 
-        keys := make([]string, 0, len(result))
-        for key := range result {
-            keys = append(keys, key)
-        }
-        return keys
-    }
-
-    return collectKeys(n)
+	return collectKeys(n)
 }
+
+// TODO: implement the EachKey method. this takes a callback function and executes it for each key in the object node.
+// func (n *Node) EachKey(callback func(key string, value *Node)) { ... }
 
 // Empty returns true if the current node is empty.
 func (n *Node) Empty() bool {
@@ -164,8 +157,18 @@ func (n *Node) Type() ValueType {
 }
 
 // Value returns the value of the current node.
+//
+// Usage:
+//
+//	root := Unmarshal([]byte(`{"key": "value"}`))
+//	val, err := root.MustKey("key").Value()
+//	if err != nil {
+//		t.Errorf("Value returns error: %v", err)
+//	}
+//
+//	result: "value"
 func (n *Node) Value() (value interface{}, err error) {
-	value = n.Load()
+	value = n.load()
 
 	if value == nil {
 		switch n.nodeType {
@@ -173,7 +176,7 @@ func (n *Node) Value() (value interface{}, err error) {
 			return nil, nil
 
 		case Number:
-			value, err = ParseFloatLiteral(n.Source())
+			value, err = ParseFloatLiteral(n.source())
 			if err != nil {
 				return nil, err
 			}
@@ -182,8 +185,7 @@ func (n *Node) Value() (value interface{}, err error) {
 
 		case String:
 			var ok bool
-
-			value, ok = Unquote(n.Source(), doubleQuote)
+			value, ok = Unquote(n.source(), doubleQuote)
 			if !ok {
 				return "", errors.New("invalid string value")
 			}
@@ -191,11 +193,11 @@ func (n *Node) Value() (value interface{}, err error) {
 			n.value = value
 
 		case Boolean:
-			if len(n.Source()) == 0 {
+			if len(n.source()) == 0 {
 				return nil, errors.New("empty boolean value")
 			}
 
-			b := n.Source()[0]
+			b := n.source()[0]
 			value = b == 't' || b == 'T'
 			n.value = value
 
@@ -227,6 +229,15 @@ func (n *Node) Value() (value interface{}, err error) {
 // Set sets the value of the current node.
 //
 // If the given value is nil, it will be updated to null type.
+//
+// Usage:
+//
+//	root := Unmarshal([]byte("null"))
+//	if err := root.Set("foo"); err != nil {
+//		t.Errorf("Set returns error: %v", err)
+//	}
+//
+//	result: "foo" (string)
 func (n *Node) Set(val interface{}) error {
 	if val == nil {
 		return n.SetNull()
@@ -329,6 +340,15 @@ func (n *Node) SetNode(val *Node) error {
 }
 
 // Delete removes the current node from the parent node.
+//
+// Usage:
+//
+//	root := Unmarshal([]byte(`{"key": "value"}`))
+//	if err := root.MustKey("key").Delete(); err != nil {
+//		t.Errorf("Delete returns error: %v", err)
+//	}
+//
+//	result: {} (empty object)
 func (n *Node) Delete() error {
 	if n == nil {
 		return errors.New("can't delete nil node")
@@ -342,6 +362,17 @@ func (n *Node) Delete() error {
 }
 
 // Size returns the number of sub-nodes of the current Array node.
+//
+// Usage:
+//
+//	root := ArrayNode("", []*Node{StringNode("", "foo"), NumberNode("", 1)})
+//	if root == nil {
+//		t.Errorf("ArrayNode returns nil")
+//	}
+//
+//	if root.Size() != 2 {
+//		t.Errorf("ArrayNode returns wrong size: %d", root.Size())
+//	}
 func (n *Node) Size() int {
 	if n == nil {
 		return 0
@@ -351,12 +382,32 @@ func (n *Node) Size() int {
 }
 
 // Index returns the index of the current node in the parent array node.
+//
+// Usage:
+//
+//	root := ArrayNode("", []*Node{StringNode("", "foo"), NumberNode("", 1)})
+//	if root == nil {
+//		t.Errorf("ArrayNode returns nil")
+//	}
+//
+//	if root.MustIndex(1).Index() != 1 {
+//		t.Errorf("Index returns wrong index: %d", root.MustIndex(1).Index())
+//	}
+//
+// We can also use the index to the byte slice of the JSON data directly.
+//
+// Example:
+//
+//	root := Unmarshal([]byte(`["foo", 1]`))
+//	if root == nil {
+//		t.Errorf("Unmarshal returns nil")
+//	}
+//
+//	if string(root.MustIndex(1).source()) != "1" {
+//		t.Errorf("source returns wrong result: %s", root.MustIndex(1).source())
+//	}
 func (n *Node) Index() int {
-	if n == nil {
-		return -1
-	}
-
-	if n.index == nil {
+	if n == nil || n.index == nil {
 		return -1
 	}
 
@@ -367,6 +418,8 @@ func (n *Node) Index() int {
 //
 // If the index is negative, it returns the index is from the end of the array.
 // Also, it panics if the index is not found.
+//
+// check the Index method for detailed usage.
 func (n *Node) MustIndex(expectIdx int) *Node {
 	val, err := n.GetIndex(expectIdx)
 	if err != nil {
@@ -384,7 +437,7 @@ func (n *Node) GetIndex(idx int) (*Node, error) {
 		return nil, errors.New("node is nil")
 	}
 
-	if n.nodeType != Array {
+	if !n.IsArray() {
 		return nil, errors.New("node is not array")
 	}
 
@@ -411,6 +464,10 @@ func (n *Node) DeleteIndex(idx int) error {
 }
 
 // NullNode creates a new null type node.
+//
+// Usage:
+//
+//	_ := NullNode("")
 func NullNode(key string) *Node {
 	return &Node{
 		key:      &key,
@@ -421,6 +478,13 @@ func NullNode(key string) *Node {
 }
 
 // NumberNode creates a new number type node.
+//
+// Usage:
+//
+//	root := NumberNode("", 1)
+//	if root == nil {
+//		t.Errorf("NumberNode returns nil")
+//	}
 func NumberNode(key string, value float64) *Node {
 	return &Node{
 		key:      &key,
@@ -431,6 +495,13 @@ func NumberNode(key string, value float64) *Node {
 }
 
 // StringNode creates a new string type node.
+//
+// Usage:
+//
+//	root := StringNode("", "foo")
+//	if root == nil {
+//		t.Errorf("StringNode returns nil")
+//	}
 func StringNode(key string, value string) *Node {
 	return &Node{
 		key:      &key,
@@ -440,7 +511,14 @@ func StringNode(key string, value string) *Node {
 	}
 }
 
-// BoolNode creates a new boolean type node.
+// BoolNode creates a new given boolean value node.
+//
+// Usage:
+//
+//	root := BoolNode("", true)
+//	if root == nil {
+//		t.Errorf("BoolNode returns nil")
+//	}
 func BoolNode(key string, value bool) *Node {
 	return &Node{
 		key:      &key,
@@ -453,6 +531,13 @@ func BoolNode(key string, value bool) *Node {
 // ArrayNode creates a new array type node.
 //
 // If the given value is nil, it creates an empty array node.
+//
+// Usage:
+//
+//	root := ArrayNode("", []*Node{StringNode("", "foo"), NumberNode("", 1)})
+//	if root == nil {
+//		t.Errorf("ArrayNode returns nil")
+//	}
 func ArrayNode(key string, value []*Node) *Node {
 	curr := &Node{
 		key:      &key,
@@ -515,16 +600,31 @@ func (n *Node) IsObject() bool {
 }
 
 // IsNull returns true if the current node is null type.
+func (n *Node) IsNull() bool {
+	return n.nodeType == Null
+}
+
+// IsBool returns true if the current node is boolean type.
 func (n *Node) IsBool() bool {
 	return n.nodeType == Boolean
+}
+
+// IsString returns true if the current node is string type.
+func (n *Node) IsString() bool {
+	return n.nodeType == String
+}
+
+// IsNumber returns true if the current node is number type.
+func (n *Node) IsNumber() bool {
+	return n.nodeType == Number
 }
 
 func (n *Node) ready() bool {
 	return n.borders[1] != 0
 }
 
-// Source returns the source of the current node.
-func (n *Node) Source() []byte {
+// source returns the source of the current node.
+func (n *Node) source() []byte {
 	if n == nil {
 		return nil
 	}
@@ -536,6 +636,7 @@ func (n *Node) Source() []byte {
 	return nil
 }
 
+// root returns the root node of the current node.
 func (n *Node) root() *Node {
 	if n == nil {
 		return nil
@@ -550,12 +651,23 @@ func (n *Node) root() *Node {
 }
 
 // GetNull returns the null value if current node is null type.
+//
+// Usage:
+//
+//	root := Unmarshal([]byte("null"))
+//	val, err := root.GetNull()
+//	if err != nil {
+//		t.Errorf("GetNull returns error: %v", err)
+//	}
+//	if val != nil {
+//		t.Errorf("GetNull returns wrong result: %v", val)
+//	}
 func (n *Node) GetNull() (interface{}, error) {
 	if n == nil {
 		return nil, errors.New("node is nil")
 	}
 
-	if n.nodeType != Null {
+	if !n.IsNull() {
 		return nil, errors.New("node is not null")
 	}
 
@@ -575,6 +687,15 @@ func (n *Node) MustNull() interface{} {
 }
 
 // GetNumeric returns the numeric (int/float) value if current node is number type.
+//
+// Usage:
+//
+//	root := Unmarshal([]byte("10.5"))
+//	val, err := root.GetNumeric()
+//	if err != nil {
+//		t.Errorf("GetNumeric returns error: %v", err)
+//	}
+//	println(val) // 10.5
 func (n *Node) GetNumeric() (float64, error) {
 	if n == nil {
 		return 0, errors.New("node is nil")
@@ -597,6 +718,83 @@ func (n *Node) GetNumeric() (float64, error) {
 	return v, nil
 }
 
+// GetInts traverses the current JSON nodes and collects all integer values.
+//
+// The Number type stores both int and float types together as float64,
+// but the GetInts function only retrieves values of the int type
+// because it fetches values only if there is no fractional part when compared with float64 values.
+//
+// Usage:
+//
+//	root := Must(Unmarshal([]byte(`{"key": 10.5, "key2": 10, "key3": "foo"}`)))
+//	ints := root.GetInts()
+//	if len(ints) != 1 {
+//		t.Errorf("GetInts returns wrong result: %v", ints)
+//	}
+func (n *Node) GetInts() []int {
+	var collectInts func(*Node) []int
+	collectInts = func(node *Node) []int {
+		if node == nil {
+			return nil
+		}
+
+		result := []int{}
+		if node.IsNumber() {
+			numVal, err := node.GetNumeric()
+			if err == nil && numVal == float64(int(numVal)) { // doesn't have a decimal part
+				result = append(result, int(numVal))
+			}
+		}
+
+		for _, childNode := range node.next {
+			childInts := collectInts(childNode)
+			result = append(result, childInts...)
+		}
+
+		return result
+	}
+
+	return collectInts(n)
+}
+
+// GetFloats traverses the current JSON nodes and collects all float values.
+//
+// The Number type combines int and float types into float64 for storage,
+// but the GetFloats function only accurately retrieves float types because it checks whether the numbers have a fractional part.
+//
+// Usage:
+//
+//	root := Must(Unmarshal([]byte(`{"key": 10.5, "key2": 10, "key3": "foo"}`)))
+//	floats := root.GetFloats()
+//	if len(floats) != 1 {
+//		t.Errorf("GetFloats returns wrong result: %v", floats)
+//	}
+func (n *Node) GetFloats() []float64 {
+	var collectFloats func(*Node) []float64
+	collectFloats = func(node *Node) []float64 {
+		if node == nil {
+			return nil
+		}
+
+		result := []float64{}
+		if node.IsNumber() {
+			numVal, err := node.GetNumeric()
+			if err == nil && numVal != float64(int(numVal)) { // check if it's a float
+				result = append(result, numVal)
+			}
+		}
+
+		for _, childNode := range node.next {
+			childFloats := collectFloats(childNode)
+			result = append(result, childFloats...)
+		}
+
+		return result
+	}
+
+	return collectFloats(n)
+}
+
 // MustNumeric returns the numeric (int/float) value if current node is number type.
 //
 // It panics if the current node is not number type.
@@ -610,12 +808,26 @@ func (n *Node) MustNumeric() float64 {
 }
 
 // GetString returns the string value if current node is string type.
+//
+// Usage:
+//
+//	root, err := Unmarshal([]byte("foo"))
+//	if err != nil {
+//		t.Errorf("Error on Unmarshal(): %s", err)
+//	}
+//
+//	str, err := root.GetString()
+//	if err != nil {
+//		t.Errorf("should retrieve string value: %s", err)
+//	}
+//
+//	println(str) // "foo"
 func (n *Node) GetString() (string, error) {
 	if n == nil {
 		return "", errors.New("string node is empty")
 	}
 
-	if n.Type() != String {
+	if !n.IsString() {
 		return "", errors.New("node type is not string")
 	}
 
@@ -632,6 +844,41 @@ func (n *Node) GetString() (string, error) {
 	return v, nil
 }
 
+// GetStrings traverses the current JSON nodes and collects all string values.
+//
+// Usage:
+//
+//	root := Must(Unmarshal([]byte(`{"key": "value", "key2": 10, "key3": "foo"}`))
+//	strs := root.GetStrings()
+//	if len(strs) != 2 {
+//		t.Errorf("GetStrings returns wrong result: %v", strs)
+//	}
+func (n *Node) GetStrings() []string {
+	var collectStrings func(*Node) []string
+	collectStrings = func(node *Node) []string {
+		if node == nil {
+			return nil
+		}
+
+		result := []string{}
+		if node.IsString() {
+			strVal, err := node.GetString()
+			if err == nil {
+				result = append(result, strVal)
+			}
+		}
+
+		for _, childNode := range node.next {
+			childStrings := collectStrings(childNode)
+			result = append(result, childStrings...)
+		}
+
+		return result
+	}
+
+	return collectStrings(n)
+}
+
 // MustString returns the string value if current node is string type.
 //
 // It panics if the current node is not string type.
@@ -645,6 +892,14 @@ func (n *Node) MustString() string {
 }
 
 // GetBools traverses the current JSON nodes and collects all boolean values.
+//
+// Usage:
+//
+//	root := Must(Unmarshal([]byte(`{"key": true, "key2": 10, "key3": "foo"}`)))
+//	bools := root.GetBools()
+//	if len(bools) != 1 {
+//		t.Errorf("GetBools returns wrong result: %v", bools)
+//	}
 func (n *Node) GetBools() []bool {
 	var collectBools func(*Node) []bool
 	collectBools = func(node *Node) []bool {
@@ -653,7 +908,7 @@ func (n *Node) GetBools() []bool {
 		}
 
 		result := []bool{}
-		if node.nodeType == Boolean {
+		if node.IsBool() {
 			if boolVal, err := node.GetBool(); err == nil {
 				result = append(result, boolVal)
 			}
@@ -670,8 +925,16 @@ func (n *Node) GetBools() []bool {
 	return collectBools(n)
 }
 
-
 // GetBool returns the boolean value if current node is boolean type.
+//
+// Usage:
+//
+//	root := Unmarshal([]byte("true"))
+//	val, err := root.GetBool()
+//	if err != nil {
+//		t.Errorf("GetBool returns error: %v", err)
+//	}
+//	println(val) // true
 func (n *Node) GetBool() (bool, error) {
 	if n == nil {
 		return false, errors.New("node is nil")
@@ -707,6 +970,20 @@ func (n *Node) MustBool() bool {
 }
 
 // GetArray returns the array value if current node is array type.
+//
+// Usage:
+//
+//		root := Must(Unmarshal([]byte(`["foo", 1]`)))
+//		arr, err := root.GetArray()
+//		if err != nil {
+//			t.Errorf("GetArray returns error: %v", err)
+//		}
+//
+//		for _, val := range arr {
+//			println(val)
+//		}
+//
+//	 result: "foo", 1
 func (n *Node) GetArray() ([]*Node, error) {
 	if n == nil {
 		return nil, errors.New("node is nil")
@@ -744,6 +1021,25 @@ func (n *Node) MustArray() []*Node {
 // AppendArray appends the given values to the current array node.
 //
 // If the current node is not array type, it returns an error.
+//
+// Example 1:
+//
+//	root := Must(Unmarshal([]byte(`[{"foo":"bar"}]`)))
+//	if err := root.AppendArray(NullNode("")); err != nil {
+//		t.Errorf("should not return error: %s", err)
+//	}
+//
+//	result: [{"foo":"bar"}, null]
+//
+// Example 2:
+//
+//	root := Must(Unmarshal([]byte(`["bar", "baz"]`)))
+//	err := root.AppendArray(NumberNode("", 1), StringNode("", "foo"))
+//	if err != nil {
+//		t.Errorf("AppendArray returns error: %v", err)
+//	 }
+//
+//	result: ["bar", "baz", 1, "foo"]
 func (n *Node) AppendArray(value ...*Node) error {
 	if !n.IsArray() {
 		return errors.New("can't append value to non-array node")
@@ -759,13 +1055,45 @@ func (n *Node) AppendArray(value ...*Node) error {
 	return nil
 }
 
+// ArrayEach executes the callback for each element in the JSON array.
+//
+// Usage:
+//
+//	jsonArrayNode.ArrayEach(func(i int, valueNode *Node) {
+//	    fmt.Println(i, valueNode)
+//	})
+func (n *Node) ArrayEach(callback func(i int, target *Node)) {
+	if n == nil || !n.IsArray() {
+		return
+	}
+
+	for idx := 0; idx < len(n.next); idx++ {
+		element, err := n.GetIndex(idx)
+		if err != nil {
+			continue
+		}
+
+		callback(idx, element)
+	}
+}
+
 // GetObject returns the object value if current node is object type.
+//
+// Usage:
+//
+//	root := Must(Unmarshal([]byte(`{"key": "value"}`)))
+//	obj, err := root.GetObject()
+//	if err != nil {
+//		t.Errorf("GetObject returns error: %v", err)
+//	}
+//
+//	result: map[string]*Node{"key": StringNode("key", "value")}
 func (n *Node) GetObject() (map[string]*Node, error) {
 	if n == nil {
 		return nil, errors.New("node is nil")
 	}
 
-	if n.Type() != Object {
+	if !n.IsObject() {
 		return nil, errors.New("node is not object")
 	}
 
@@ -810,6 +1138,23 @@ func (n *Node) AppendObject(key string, value *Node) error {
 	return nil
 }
 
+// ObjectEach executes the callback for each key-value pair in the JSON object.
+//
+// Usage:
+//
+//	jsonObjectNode.ObjectEach(func(key string, valueNode *Node) {
+//	    fmt.Println(key, valueNode)
+//	})
+func (n *Node) ObjectEach(callback func(key string, value *Node)) {
+	if n == nil || !n.IsObject() {
+		return
+	}
+
+	for key, child := range n.next {
+		callback(key, child)
+	}
+}
+
 // String converts the node to a string representation.
 func (n *Node) String() string {
 	if n == nil {
@@ -817,7 +1162,7 @@ func (n *Node) String() string {
 	}
 
 	if n.ready() && !n.modified {
-		return string(n.Source())
+		return string(n.source())
 	}
 
 	val, err := Marshal(n)
@@ -1097,4 +1442,16 @@ func (n *Node) clone() *Node {
 	}
 
 	return node
+}
+
+// Must panics if the given node is not fulfilled the expectation.
+// Usage:
+//
+//	node := Must(Unmarshal([]byte(`{"key": "value"}`))
+func Must(root *Node, expect error) *Node {
+	if expect != nil {
+		panic(expect)
+	}
+
+	return root
 }

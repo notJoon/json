@@ -10,9 +10,18 @@ import (
 const maxNestingDepth = 10000
 
 // State machine transition logic and grammar references
-// [1] https://github.com/spyzhov/ajson/blob/master/internal/state.go
+// [1] https://github.com/spyzhov/ajson/blob/master/decode.go
 // [2] https://cs.opensource.google/go/go/+/refs/tags/go1.22.1:src/encoding/json/scanner.go
 
+// Unmarshal parses the JSON-encoded data and returns a Node.
+// The data must be a valid JSON-encoded value.
+//
+// Usage:
+// 	node, err := json.Unmarshal([]byte(`{"key": "value"}`))
+// 	if err != nil {
+// 		fmt.Println(err)
+// 	}
+// 	println(node) // {"key": "value"}
 func Unmarshal(data []byte) (*Node, error) {
 	buf := newBuffer(data)
 
@@ -286,12 +295,4 @@ func UnmarshalSafe(data []byte) (*Node, error) {
 	var safe []byte
 	safe = append(safe, data...)
 	return Unmarshal(safe)
-}
-
-func Must(root *Node, expect error) *Node {
-	if expect != nil {
-		panic(expect)
-	}
-
-	return root
 }

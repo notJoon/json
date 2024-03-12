@@ -486,32 +486,32 @@ func countBooleans(bools []bool) (trueCount, falseCount int) {
 
 func TestNode_GetAllBools(t *testing.T) {
 	tests := []struct {
-		name       string
-		json       string
+		name           string
+		json           string
 		expectedTrues  int
 		expectedFalses int
 	}{
 		{
-			name:       "no booleans",
-			json:       `{"foo": "bar", "number": 123}`,
+			name:           "no booleans",
+			json:           `{"foo": "bar", "number": 123}`,
 			expectedTrues:  0,
 			expectedFalses: 0,
 		},
 		{
-			name:       "single boolean true",
-			json:       `{"isTrue": true}`,
+			name:           "single boolean true",
+			json:           `{"isTrue": true}`,
 			expectedTrues:  1,
 			expectedFalses: 0,
 		},
 		{
-			name:       "single boolean false",
-			json:       `{"isFalse": false}`,
+			name:           "single boolean false",
+			json:           `{"isFalse": false}`,
 			expectedTrues:  0,
 			expectedFalses: 1,
 		},
 		{
-			name:       "multiple booleans",
-			json:       `{"first": true, "info": {"second": false, "third": true}, "array": [false, true, false]}`,
+			name:           "multiple booleans",
+			json:           `{"first": true, "info": {"second": false, "third": true}, "array": [false, true, false]}`,
 			expectedTrues:  3,
 			expectedFalses: 3,
 		},
@@ -685,6 +685,106 @@ func TestNode_GetNumeric_Fail(t *testing.T) {
 	}
 }
 
+func TestNode_GetAllIntsFromNode(t *testing.T) {
+	tests := []struct {
+		name     string
+		json     string
+		expected []int
+	}{
+		{
+			name:     "no numbers",
+			json:     `{"foo": "bar", "baz": "qux"}`,
+			expected: []int{},
+		},
+		{
+			name:     "mixed numbers",
+			json:     `{"int": 42, "float": 3.14, "nested": {"int2": 24, "array": [1, 2.34, 3]}}`,
+			expected: []int{42, 24, 1, 3},
+		},
+		{
+			name:     "all floats",
+			json:     `{"float1": 0.1, "float2": 4.5}`,
+			expected: []int{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root, err := Unmarshal([]byte(tc.json))
+			if err != nil {
+				t.Fatalf("Unmarshal failed: %v", err)
+			}
+
+			got := root.GetInts()
+			for _, exp := range tc.expected {
+				if !containsInts(got, exp) {
+					t.Errorf("Expected integer %d is missing", exp)
+				}
+			}
+		})
+	}
+}
+
+// containsInts checks if a slice of integers contains a specific value.
+func containsInts(slice []int, val int) bool {
+	for _, item := range slice {
+		if item == val {
+			return true
+		}
+	}
+	return false
+}
+
+func TestNode_GetAllFloatsFromNode(t *testing.T) {
+	tests := []struct {
+		name     string
+		json     string
+		expected []float64
+	}{
+		{
+			name:     "no numbers",
+			json:     `{"foo": "bar", "baz": "qux"}`,
+			expected: []float64{},
+		},
+		{
+			name:     "mixed numbers",
+			json:     `{"int": 42, "float": 3.14, "nested": {"float2": 2.34, "array": [1, 2.34, 3]}}`,
+			expected: []float64{3.14, 2.34, 2.34},
+		},
+		{
+			name:     "all ints",
+			json:     `{"int1": 1, "int2": 2}`,
+			expected: []float64{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root, err := Unmarshal([]byte(tc.json))
+			if err != nil {
+				t.Fatalf("Unmarshal failed: %v", err)
+			}
+
+			got := root.GetFloats()
+			for _, exp := range tc.expected {
+				if !containsFloats(got, exp) {
+					t.Errorf("Expected float %f is missing", exp)
+				}
+			}
+		})
+	}
+}
+
+// containsFloats checks if a slice of floats contains a specific value.
+func containsFloats(slice []float64, val float64) bool {
+	for _, item := range slice {
+		if item == val {
+			return true
+		}
+	}
+	return false
+}
+
 func TestNode_GetString(t *testing.T) {
 	root, err := Unmarshal([]byte(`"123foobar 3456"`))
 	if err != nil {
@@ -712,6 +812,52 @@ func TestNode_GetString_Fail(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := tt.node.GetString(); err == nil {
 				t.Errorf("%s should be an error", tt.name)
+			}
+		})
+	}
+}
+
+func TestNode_GetAllStringsFromNode(t *testing.T) {
+	tests := []struct {
+		name     string
+		json     string
+		expected []string
+	}{
+		{
+			name:     "no strings",
+			json:     `{"int": 42, "float": 3.14}`,
+			expected: []string{},
+		},
+		{
+			name:     "multiple strings",
+			json:     `{"str": "hello", "nested": {"str2": "world"}, "array": ["foo", "bar"]}`,
+			expected: []string{"hello", "world", "foo", "bar"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root, err := Unmarshal([]byte(tc.json))
+			if err != nil {
+				t.Fatalf("Unmarshal failed: %v", err)
+			}
+
+			got := root.GetStrings()
+			if len(got) != len(tc.expected) {
+				t.Errorf("Expected %d strings, got %d", len(tc.expected), len(got))
+				return
+			}
+			for _, exp := range tc.expected {
+				found := false
+				for _, str := range got {
+					if str == exp {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected string '%s' not found", exp)
+				}
 			}
 		})
 	}
@@ -837,6 +983,77 @@ func TestNode_IsArray(t *testing.T) {
 
 	if root.Type() != Array {
 		t.Errorf(fmt.Sprintf("Must be an array. got: %s", root.Type().String()))
+	}
+}
+
+func TestNode_ArrayEach(t *testing.T) {
+	tests := []struct {
+		name     string
+		json     string
+		expected []int
+	}{
+		{
+			name:     "empty array",
+			json:     `[]`,
+			expected: []int{},
+		},
+		{
+			name:     "single element",
+			json:     `[42]`,
+			expected: []int{42},
+		},
+		{
+			name:     "multiple elements",
+			json:     `[1, 2, 3, 4, 5]`,
+			expected: []int{1, 2, 3, 4, 5},
+		},
+		{
+			name:     "multiple elements but all values are same",
+			json:     `[1, 1, 1, 1, 1]`,
+			expected: []int{1, 1, 1, 1, 1},
+		},
+		{
+			name:     "multiple elements with non-numeric values",
+			json:     `["a", "b", "c", "d", "e"]`,
+			expected: []int{},
+		},
+		{
+			name:     "non-array node",
+			json:     `{"not": "an array"}`,
+			expected: []int{},
+		},
+		{
+			name:     "array containing numeric and non-numeric elements",
+			json:     `["1", 2, 3, "4", 5, "6"]`,
+			expected: []int{2, 3, 5},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root, err := Unmarshal([]byte(tc.json))
+			if err != nil {
+				t.Fatalf("Unmarshal failed: %v", err)
+			}
+
+			var result []int // callback result
+			root.ArrayEach(func(index int, element *Node) {
+				if val, err := strconv.Atoi(element.String()); err == nil {
+					result = append(result, val)
+				}
+			})
+
+			if len(result) != len(tc.expected) {
+				t.Errorf("%s: expected %d elements, got %d", tc.name, len(tc.expected), len(result))
+				return
+			}
+
+			for i, val := range result {
+				if val != tc.expected[i] {
+					t.Errorf("%s: expected value at index %d to be %d, got %d", tc.name, i, tc.expected[i], val)
+				}
+			}
+		})
 	}
 }
 
@@ -1040,7 +1257,7 @@ func TestNode_EachKey(t *testing.T) {
 				t.Errorf("error occurred while unmarshal")
 			}
 
-			value := root.EachKey()
+			value := root.UniqueKeys()
 			if len(value) != len(tt.expected) {
 				t.Errorf("%s length must be %v. got: %v. retrieved keys: %s", tt.name, len(tt.expected), len(value), value)
 			}
@@ -1123,6 +1340,68 @@ func TestNode_GetObject_Fail(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := tt.node.GetObject(); err == nil {
 				t.Errorf("%s should be an error", tt.name)
+			}
+		})
+	}
+}
+
+func TestNode_ObjectEach(t *testing.T) {
+	tests := []struct {
+		name     string
+		json     string
+		expected map[string]int
+	}{
+		{
+			name:     "empty object",
+			json:     `{}`,
+			expected: make(map[string]int),
+		},
+		{
+			name:     "single key-value pair",
+			json:     `{"key": 42}`,
+			expected: map[string]int{"key": 42},
+		},
+		{
+			name:     "multiple key-value pairs",
+			json:     `{"one": 1, "two": 2, "three": 3}`,
+			expected: map[string]int{"one": 1, "two": 2, "three": 3},
+		},
+		{
+			name:     "multiple key-value pairs with some non-numeric values",
+			json:     `{"one": 1, "two": "2", "three": 3, "four": "4"}`,
+			expected: map[string]int{"one": 1, "three": 3},
+		},
+		{
+			name:     "non-object node",
+			json:     `["not", "an", "object"]`,
+			expected: make(map[string]int),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root, err := Unmarshal([]byte(tc.json))
+			if err != nil {
+				t.Fatalf("Unmarshal failed: %v", err)
+			}
+
+			result := make(map[string]int)
+			root.ObjectEach(func(key string, value *Node) {
+				// extract integer values from the object
+				if val, err := strconv.Atoi(value.String()); err == nil {
+					result[key] = val
+				}
+			})
+
+			if len(result) != len(tc.expected) {
+				t.Errorf("%s: expected %d key-value pairs, got %d", tc.name, len(tc.expected), len(result))
+				return
+			}
+
+			for key, val := range tc.expected {
+				if result[key] != val {
+					t.Errorf("%s: expected value for key %s to be %d, got %d", tc.name, key, val, result[key])
+				}
 			}
 		})
 	}

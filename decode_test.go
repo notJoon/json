@@ -21,15 +21,15 @@ func simpleValid(test *testNode, t *testing.T) {
 		t.Errorf("Error on Unmarshal(%s): root is nil", test.name)
 	} else if root.nodeType != test._type {
 		t.Errorf("Error on Unmarshal(%s): wrong type", test.name)
-	} else if !bytes.Equal(root.Source(), test.value) {
-		t.Errorf("Error on Unmarshal(%s): %s != %s", test.name, root.Source(), test.value)
+	} else if !bytes.Equal(root.source(), test.value) {
+		t.Errorf("Error on Unmarshal(%s): %s != %s", test.name, root.source(), test.value)
 	}
 }
 
 func simpleInvalid(test *testNode, t *testing.T) {
 	root, err := Unmarshal(test.input)
 	if err == nil {
-		t.Errorf("Error on Unmarshal(%s): error expected, got '%s'", test.name, root.Source())
+		t.Errorf("Error on Unmarshal(%s): error expected, got '%s'", test.name, root.source())
 	} else if root != nil {
 		t.Errorf("Error on Unmarshal(%s): root is not nil", test.name)
 	}
@@ -98,8 +98,8 @@ func TestUnmarshal_NumericSimpleSuccess(t *testing.T) {
 				t.Errorf("Error on Unmarshal(%s): root is nil", test.name)
 			} else if root.nodeType != test._type {
 				t.Errorf("Error on Unmarshal(%s): wrong type", test.name)
-			} else if !bytes.Equal(root.Source(), test.value) {
-				t.Errorf("Error on Unmarshal(%s): %s != %s", test.name, root.Source(), test.value)
+			} else if !bytes.Equal(root.source(), test.value) {
+				t.Errorf("Error on Unmarshal(%s): %s != %s", test.name, root.source(), test.value)
 			}
 		})
 	}
@@ -596,7 +596,7 @@ func TestUnmarshalSafe(t *testing.T) {
 			t.Errorf("Error on Unmarshal: %s", err.Error())
 		} else if root == nil {
 			t.Errorf("Error on Unmarshal: root is nil")
-		} else if !bytes.Equal(root.Source(), safe.Source()) {
+		} else if !bytes.Equal(root.source(), safe.source()) {
 			t.Errorf("Error on UnmarshalSafe: values not same")
 		}
 	}
