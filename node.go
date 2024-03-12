@@ -220,11 +220,12 @@ func (n *Node) Set(val interface{}) error {
 	switch result := val.(type) {
 		// TODO: support bigint kind (uin256, int256, etc.) if possible.
 		case float64, float32, int64, int32, int16, int8, int, uint64, uint32, uint16, uint8, uint:
-			if fval, err := numberKind2f64(val); err != nil {
+			f, err := numberKind2f64(val)
+			if err != nil {
 				return err
-			} else {
-				return n.SetNumber(fval)
 			}
+
+			return n.SetNumber(f)
 
 		case string:
 			return n.SetString(result)
