@@ -209,14 +209,14 @@ func Unmarshal(data []byte) (*Node, error) {
 }
 
 func isValidContainerType(current *Node, nodeType ValueType) bool {
-    switch nodeType {
-    case Object:
-        return current != nil && current.IsObject() && !current.ready()
-    case Array:
-        return current != nil && current.IsArray() && !current.ready()
-    default:
-        return false
-    }
+	switch nodeType {
+	case Object:
+		return current != nil && current.IsObject() && !current.ready()
+	case Array:
+		return current != nil && current.IsArray() && !current.ready()
+	default:
+		return false
+	}
 }
 
 // getString extracts a string from the buffer and advances the buffer index past the string.
