@@ -281,16 +281,6 @@ func checkNestingDepth(nesting int) (int, error) {
 	return nesting + 1, nil
 }
 
-func cptrs(cpy *string) *string {
-	if cpy == nil {
-		return nil
-	}
-
-	val := *cpy
-
-	return &val
-}
-
 func UnmarshalSafe(data []byte) (*Node, error) {
 	var safe []byte
 	safe = append(safe, data...)

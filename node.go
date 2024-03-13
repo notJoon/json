@@ -437,8 +437,12 @@ func (n *Node) GetIndex(idx int) (*Node, error) {
 		return nil, errors.New("node is nil")
 	}
 
-	if !n.IsArray() {
+	if n.nodeType != Array {
 		return nil, errors.New("node is not array")
+	}
+
+	if idx > n.Size() {
+		return nil, errors.New("input index exceeds the array size")
 	}
 
 	if idx < 0 {
@@ -460,7 +464,7 @@ func (n *Node) DeleteIndex(idx int) error {
 		return err
 	}
 
-	return node.remove(node)
+	return n.remove(node)
 }
 
 // NullNode creates a new null type node.
@@ -990,7 +994,7 @@ func (n *Node) GetArray() ([]*Node, error) {
 	}
 
 	if n.nodeType != Array {
-		return nil, errors.New("node is not array")
+		return nil, fmt.Errorf("node is not array. got: %s", n.nodeType.String())
 	}
 
 	val, err := n.Value()
@@ -1316,7 +1320,7 @@ func (n *Node) validate(t ValueType, v interface{}) error {
 
 // isContainer checks the current node type is array or object.
 func (n *Node) isContainer() bool {
-	return n.IsArray() || n.IsObject()
+	return n.nodeType == Array || n.nodeType == Object
 }
 
 // remove removes the value from the current container type node.
@@ -1403,6 +1407,7 @@ func (n *Node) isParentNode(nd *Node) bool {
 	return false
 }
 
+// setRef sets the reference of the current node.
 func (n *Node) setRef(prev *Node, key *string, idx *int) {
 	n.prev = prev
 
@@ -1424,24 +1429,45 @@ func (n *Node) Clone() *Node {
 	return node
 }
 
+// clone clones the current node and returns a new node instance with same value.
 func (n *Node) clone() *Node {
 	node := &Node{
 		prev:     n.prev,
-		next:     make(map[string]*Node, len(n.next)),
-		key:      n.key,
+		next:     make(map[string]*Node, n.Size()),
+		key:      cptrs(n.key),
 		data:     n.data,
 		value:    n.value,
 		nodeType: n.nodeType,
-		index:    n.index,
+		index:    cptri(n.index),
 		borders:  n.borders,
 		modified: n.modified,
 	}
 
 	for k, v := range n.next {
-		node.next[k] = v
+		node.next[k] = v.clone()
 	}
 
 	return node
+}
+
+func cptrs(cpy *string) *string {
+	if cpy == nil {
+		return nil
+	}
+
+	val := *cpy
+
+	return &val
+}
+
+func cptri(cpy *int) *int {
+	if cpy == nil {
+		return nil
+	}
+
+	val := *cpy
+
+	return &val
 }
 
 // Must panics if the given node is not fulfilled the expectation.

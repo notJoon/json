@@ -1031,10 +1031,7 @@ func TestNode_ArrayEach(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			root, err := Unmarshal([]byte(tc.json))
-			if err != nil {
-				t.Fatalf("Unmarshal failed: %v", err)
-			}
+			root := Must(Unmarshal([]byte(tc.json)))
 
 			var result []int // callback result
 			root.ArrayEach(func(index int, element *Node) {
@@ -1144,6 +1141,10 @@ func TestNode_GetIndex(t *testing.T) {
 	}
 
 	expected := []int{1, 2, 3, 4, 5, 6}
+	if len(expected) != root.Size() {
+		t.Errorf("expected length and root size is not matched. expected: %d, got: %d", len(expected), root.Size())
+	}
+
 	for i, v := range expected {
 		val, err := root.GetIndex(i)
 		if err != nil {
@@ -1153,6 +1154,18 @@ func TestNode_GetIndex(t *testing.T) {
 		if val.MustNumeric() != float64(v) {
 			t.Errorf("value is not matched. expected: %d, got: %v", v, val.MustNumeric())
 		}
+	}
+}
+
+func TestNode_GetIndex_InputIndex_Exceed_Original_Node_Index(t *testing.T) {
+	root, err := Unmarshal([]byte(`[1, 2, 3, 4, 5, 6]`))
+	if err != nil {
+		t.Errorf("error occurred while unmarshal")
+	}
+
+	_, err = root.GetIndex(10)
+	if err == nil {
+		t.Errorf("GetIndex should return error")
 	}
 }
 
@@ -1659,6 +1672,51 @@ func TestNode_Root(t *testing.T) {
 	}
 }
 
+func TestNode_DeleteIndex(t *testing.T) {
+	tests := []struct {
+		json     string
+		expected string
+		index    int
+		fail     bool
+	}{
+		{`null`, ``, 0, true},
+		{`1`, ``, 0, true},
+		{`{}`, ``, 0, true},
+		{`{"foo":"bar"}`, ``, 0, true},
+		{`true`, ``, 0, true},
+		{`[]`, ``, 0, true},
+		{`[]`, ``, -1, true},
+		{`[1]`, `[]`, 0, false},
+		{`[{}]`, `[]`, 0, false},
+		{`[{}]`, `[]`, -1, false},
+		{`[{},[],1]`, `[{},[]]`, -1, false},
+		{`[{},[],1]`, `[{},1]`, 1, false},
+		{`[{},[],1]`, ``, 10, true},
+		{`[{},[],1]`, ``, -10, true},
+	}
+	for _, test := range tests {
+		t.Run(test.json, func(t *testing.T) {
+			root := Must(Unmarshal([]byte(test.json)))
+			err := root.DeleteIndex(test.index)
+			if test.fail {
+				if err == nil {
+					t.Errorf("Expected error")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+				result, err := Marshal(root)
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				} else if string(result) != test.expected {
+					t.Errorf("Unexpected result: %s", result)
+				}
+			}
+		})
+	}
+}
+
 func contains(slice []string, item string) bool {
 	for _, a := range slice {
 		if a == item {
@@ -1813,4 +1871,60 @@ func isSameObject(a, b string) bool {
 	}
 
 	return true
+}
+
+func TestNode_Clone(t *testing.T) {
+	node := NumberNode("", 1.1)
+	null := NullNode("")
+	array := ArrayNode("", []*Node{node, null})
+	object := ObjectNode("", map[string]*Node{"array": array})
+
+	tests := []struct {
+		name string
+		node *Node
+		json string
+	}{
+		{
+			name: "null",
+			node: null,
+			json: "null",
+		},
+		{
+			name: "node",
+			node: node,
+			json: "1.1",
+		},
+		{
+			name: "array",
+			node: array,
+			json: "[1.1,null]",
+		},
+		{
+			name: "object",
+			node: object,
+			json: `{"array":[1.1,null]}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			clone := test.node.Clone()
+			if clone.prev != nil {
+				t.Error("Clone().parent != nil")
+			} else if clone.index != nil {
+				t.Error("Clone().index != nil")
+			} else if clone.key != nil {
+				t.Error("Clone().key != nil")
+			}
+
+			if result, err := Marshal(clone); err != nil {
+				t.Errorf("Marshal() error: %s", err)
+			} else if string(result) != test.json {
+				t.Errorf("Marshal() clone not match: \nExpected: %s\nActual: %s", test.json, result)
+			} else if base, err := Marshal(test.node); err != nil {
+				t.Errorf("Marshal() error: %s", err)
+			} else if string(base) != test.json {
+				t.Errorf("Marshal() base not match: \nExpected: %s\nActual: %s", test.json, base)
+			}
+		})
+	}
 }
