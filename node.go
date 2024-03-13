@@ -3,6 +3,7 @@ package json
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -722,81 +723,64 @@ func (n *Node) GetNumeric() (float64, error) {
 	return v, nil
 }
 
-// GetInts traverses the current JSON nodes and collects all integer values.
-//
-// The Number type stores both int and float types together as float64,
-// but the GetInts function only retrieves values of the int type
-// because it fetches values only if there is no fractional part when compared with float64 values.
-//
-// Usage:
-//
-//	root := Must(Unmarshal([]byte(`{"key": 10.5, "key2": 10, "key3": "foo"}`)))
-//	ints := root.GetInts()
-//	if len(ints) != 1 {
-//		t.Errorf("GetInts returns wrong result: %v", ints)
-//	}
+// GetInts traverses the current JSON nodes using DFS and collects all integer values.
 func (n *Node) GetInts() []int {
-	var collectInts func(*Node) []int
-	collectInts = func(node *Node) []int {
-		if node == nil {
-			return nil
-		}
+    var stack []*Node
+    var result []int
 
-		result := []int{}
-		if node.IsNumber() {
-			numVal, err := node.GetNumeric()
-			if err == nil && numVal == float64(int(numVal)) { // doesn't have a decimal part
-				result = append(result, int(numVal))
-			}
-		}
+    stack = append(stack, n) // add starting node to stack
 
-		for _, childNode := range node.next {
-			childInts := collectInts(childNode)
-			result = append(result, childInts...)
-		}
+    for len(stack) > 0 {
+        var currentNode *Node
+        currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1] // 스택에서 노드를 팝
 
-		return result
-	}
+        if currentNode == nil {
+            continue
+        }
 
-	return collectInts(n)
+        if currentNode.IsNumber() {
+            numVal, err := currentNode.GetNumeric()
+            if err == nil && math.Mod(numVal, 1) == 0 { // no decimal part
+                result = append(result, int(numVal))
+            }
+        }
+
+        for _, childNode := range currentNode.next { // append child nodes to stack
+            stack = append(stack, childNode)
+        }
+    }
+
+    return result
 }
 
-// GetFloats traverses the current JSON nodes and collects all float values.
-//
-// The Number type combines int and float types into float64 for storage,
-// but the GetFloats function only accurately retrieves float types because it checks whether the numbers have a fractional part.
-//
-// Usage:
-//
-//	root := Must(Unmarshal([]byte(`{"key": 10.5, "key2": 10, "key3": "foo"}`)))
-//	floats := root.GetFloats()
-//	if len(floats) != 1 {
-//		t.Errorf("GetFloats returns wrong result: %v", floats)
-//	}
+// GetFloats traverses the current JSON nodes using DFS and collects all float values.
 func (n *Node) GetFloats() []float64 {
-	var collectFloats func(*Node) []float64
-	collectFloats = func(node *Node) []float64 {
-		if node == nil {
-			return nil
-		}
+    var stack []*Node
+    var result []float64
 
-		result := []float64{}
-		if node.IsNumber() {
-			numVal, err := node.GetNumeric()
-			if err == nil && numVal != float64(int(numVal)) { // check if it's a float
-				result = append(result, numVal)
-			}
-		}
+    stack = append(stack, n) // add starting node to stack
 
-		for _, childNode := range node.next {
-			childFloats := collectFloats(childNode)
-			result = append(result, childFloats...)
-		}
+    for len(stack) > 0 {
+        var currentNode *Node
+        currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1]
 
-		return result
-	}
+        if currentNode == nil {
+            continue
+        }
 
-	return collectFloats(n)
+        if currentNode.IsNumber() {
+            numVal, err := currentNode.GetNumeric()
+            if err == nil && math.Mod(numVal, 1) != 0 { // has decimal part
+                result = append(result, numVal)
+            }
+        }
+
+        for _, childNode := range currentNode.next { // append child nodes to stack
+            stack = append(stack, childNode)
+        }
+    }
+
+    return result
 }
 
 // MustNumeric returns the numeric (int/float) value if current node is number type.
@@ -895,7 +879,9 @@ func (n *Node) MustString() string {
 	return v
 }
 
-// GetBools traverses the current JSON nodes and collects all boolean values.
+// GetBools traverse the current JSON nodes and collects all boolean values.
+//
+// Use DFS to traverse the JSON nodes it consume more memory than recursion but it's faster.
 //
 // Usage:
 //
@@ -905,28 +891,31 @@ func (n *Node) MustString() string {
 //		t.Errorf("GetBools returns wrong result: %v", bools)
 //	}
 func (n *Node) GetBools() []bool {
-	var collectBools func(*Node) []bool
-	collectBools = func(node *Node) []bool {
-		if node == nil {
-			return nil
-		}
+	var stack []*Node
+    var result []bool
 
-		result := []bool{}
-		if node.IsBool() {
-			if boolVal, err := node.GetBool(); err == nil {
-				result = append(result, boolVal)
-			}
-		}
+    stack = append(stack, n)
 
-		for _, childNode := range node.next {
-			childBools := collectBools(childNode)
-			result = append(result, childBools...)
-		}
+    for len(stack) > 0 {
+        var currentNode *Node
+        currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1]
 
-		return result
-	}
+        if currentNode == nil {
+            continue
+        }
 
-	return collectBools(n)
+        if currentNode.nodeType == Boolean {
+            if boolVal, err := currentNode.GetBool(); err == nil {
+                result = append(result, boolVal)
+            }
+        }
+
+        for _, childNode := range currentNode.next {
+            stack = append(stack, childNode)
+        }
+    }
+
+    return result
 }
 
 // GetBool returns the boolean value if current node is boolean type.

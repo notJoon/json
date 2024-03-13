@@ -534,6 +534,23 @@ func TestNode_GetAllBools(t *testing.T) {
 	}
 }
 
+// GetBools function has implemented to use recursion before, but after the benchmark test, it was found that it's slower than the current (DFS) implementation.
+// So, the recursion implementation was removed.
+//
+// Also, this change has affected to other multiple value getter functions.
+func BenchmarkNode_GetAllBools(b *testing.B) {
+	root, err := Unmarshal([]byte(`{"first": true, "info": {"second": false, "third": true}, "array": [false, true, false]}`))
+	if err != nil {
+		b.Fatalf("Failed to unmarshal JSON: %v", err)
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		root.GetBools()
+	}
+}
+
 func TestNode_IsBool(t *testing.T) {
 	tests := []simpleNode{
 		{"true", BoolNode("", true)},
