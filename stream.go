@@ -1,44 +1,110 @@
 package json
 
 import (
-	"bufio"
-	"io"
+	"errors"
+	"strconv"
 )
 
-const chunkSize = 4096 // 4KB
-
-type StreamReader struct {
-	reader *bufio.Reader
-	size   int
-}
-
-// NewStreamReader returns a new StreamReader that reads data from the given io.Reader.
-// The size parameter specifies the size of the chunks to read. If size is not specified
-// or is less than or equal to 0, a default size of 4KB is used.
-func NewStreamReader(r io.Reader, size int) *StreamReader {
-	if size <= 0 {
-		size = chunkSize
+// LoadString loads a JSON string into the buffer.
+func (b *buffer) LoadString(s string) error {
+	if s == "" {
+		return errors.New("empty JSON string")
 	}
 
-	return &StreamReader{
-		reader: bufio.NewReaderSize(r, size),
-		size:   size,
-	}
+	b.data = []byte(s)
+	b.length = len(b.data)
+	b.index = 0
+	b.last = GO
+	b.state = GO
+
+	return nil
 }
 
-// ReadChunk reads data in chunks of the specified size (chunkSize).
-// It returns the read data as a byte slice and an error if any occurs.
-// When the end of the data is reached, it returns an io.EOF error.
-func (sr *StreamReader) ReadChunk() ([]byte, error) {
-	chunk := make([]byte, sr.size)
-	n, err := sr.reader.Read(chunk)
-	if err != nil && err != io.EOF {
+// parseValue parses a JSON value from the buffer.
+func (b *buffer) parseValue() (interface{}, error) {
+	b.skipWhitespace()
+	currToken, err := b.current()
+	if err != nil {
 		return nil, err
 	}
 
-	if n == 0 {
-		return nil, io.EOF
+	switch currToken {
+	case doubleQuote:
+		return b.parseString()
+	case 't':
+		if err := b.parseTrue(); err != nil {
+			return nil, err
+		}
+		return true, nil
+	case 'f':
+		if err := b.parseFalse(); err != nil {
+			return nil, err
+		}
+		return false, nil
+	case 'n':
+		if err := b.parseNull(); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	default:
+		if currToken == '-' || !notDigit(currToken) {
+			return b.parseNumber()
+		}
+
+		return nil, errors.New("invalid token found while parsing JSON value")
+	}
+}
+
+// parseString parses a string token from the buffer.
+func (b *buffer) parseString() (string, error) {
+	str, err := getString(b)
+	if err != nil {
+		return "", err
 	}
 
-	return chunk[:n], nil
+	return *str, nil
+}
+
+// parseNumber parses a number token from the buffer.
+func (b *buffer) parseNumber() (float64, error) {
+	start := b.index
+
+	if err := b.numeric(false); err != nil {
+		return -1, err
+	}
+
+	numStr := string(b.data[start:b.index])
+	num, err := strconv.ParseFloat(numStr, 64)
+	if err != nil {
+		return -1, err
+	}
+
+	return num, nil
+}
+
+// parseTrue parses a true literal token from the buffer.
+func (b *buffer) parseTrue() error {
+	if err := b.word(trueLiteral); err != nil {
+		return errors.New("invalid token found while parsing boolean value")
+	}
+
+	return nil
+}
+
+// parseFalse parses a false literal token from the buffer.
+func (b *buffer) parseFalse() error {
+	if err := b.word(falseLiteral); err != nil {
+		return errors.New("invalid token found while parsing boolean value")
+	}
+
+	return nil
+}
+
+// parseNull parses a null literal token from the buffer.
+func (b *buffer) parseNull() error {
+	if err := b.word(nullLiteral); err != nil {
+		return errors.New("invalid token found while parsing null value")
+	}
+
+	return nil
 }

@@ -111,6 +111,18 @@ func (b *buffer) skip(bs byte) error {
 	return io.EOF
 }
 
+func (b *buffer) skipWhitespace() error {
+	for b.index < b.length {
+		if b.data[b.index] != whiteSpace {
+			return nil
+		}
+
+		b.index++
+	}
+
+	return io.EOF
+}
+
 // skipAny moves the index until it encounters one of the given set of bytes.
 func (b *buffer) skipAny(endTokens map[byte]bool) error {
 	for b.index < b.length {
