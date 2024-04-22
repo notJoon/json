@@ -356,6 +356,46 @@ func TestSkipUntil(t *testing.T) {
 	}
 }
 
+func TestSkipWhitespace(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+        name    string
+        buffer  *buffer
+        wantErr bool
+    }{
+        {
+            name:    "Skip whitespace at the start",
+            buffer:  &buffer{data: []byte("   test"), length: 6, index: 0},
+            wantErr: false,
+        },
+        {
+            name:    "Skip whitespace in the middle",
+            buffer:  &buffer{data: []byte("test   test"), length: 11, index: 4},
+            wantErr: false,
+        },
+        {
+            name:    "No whitespace to skip",
+            buffer:  &buffer{data: []byte("test"), length: 4, index: 0},
+            wantErr: false,
+        },
+        {
+            name:    "Only whitespace",
+            buffer:  &buffer{data: []byte("   "), length: 3, index: 0},
+            wantErr: true,
+        },
+    }
+
+    for _, tt := range tests {
+		tt := tt
+        t.Run(tt.name, func(t *testing.T) {
+            err := tt.buffer.skipWhitespace()
+            if (err != nil) != tt.wantErr {
+                t.Errorf("buffer.skipWhitespace() error = %v, wantErr %v", err, tt.wantErr)
+            }
+		})
+	}
+}
+
 func TestSliceFromIndices(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -725,62 +725,62 @@ func (n *Node) GetNumeric() (float64, error) {
 
 // GetInts traverses the current JSON nodes using DFS and collects all integer values.
 func (n *Node) GetInts() []int {
-    var stack []*Node
-    var result []int
+	var stack []*Node
+	var result []int
 
-    stack = append(stack, n) // add starting node to stack
+	stack = append(stack, n) // add starting node to stack
 
-    for len(stack) > 0 {
-        var currentNode *Node
-        currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1] // 스택에서 노드를 팝
+	for len(stack) > 0 {
+		var currentNode *Node
+		currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1] // 스택에서 노드를 팝
 
-        if currentNode == nil {
-            continue
-        }
+		if currentNode == nil {
+			continue
+		}
 
-        if currentNode.IsNumber() {
-            numVal, err := currentNode.GetNumeric()
-            if err == nil && math.Mod(numVal, 1) == 0 { // no decimal part
-                result = append(result, int(numVal))
-            }
-        }
+		if currentNode.IsNumber() {
+			numVal, err := currentNode.GetNumeric()
+			if err == nil && math.Mod(numVal, 1) == 0 { // no decimal part
+				result = append(result, int(numVal))
+			}
+		}
 
-        for _, childNode := range currentNode.next { // append child nodes to stack
-            stack = append(stack, childNode)
-        }
-    }
+		for _, childNode := range currentNode.next { // append child nodes to stack
+			stack = append(stack, childNode)
+		}
+	}
 
-    return result
+	return result
 }
 
 // GetFloats traverses the current JSON nodes using DFS and collects all float values.
 func (n *Node) GetFloats() []float64 {
-    var stack []*Node
-    var result []float64
+	var stack []*Node
+	var result []float64
 
-    stack = append(stack, n) // add starting node to stack
+	stack = append(stack, n) // add starting node to stack
 
-    for len(stack) > 0 {
-        var currentNode *Node
-        currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1]
+	for len(stack) > 0 {
+		var currentNode *Node
+		currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1]
 
-        if currentNode == nil {
-            continue
-        }
+		if currentNode == nil {
+			continue
+		}
 
-        if currentNode.IsNumber() {
-            numVal, err := currentNode.GetNumeric()
-            if err == nil && math.Mod(numVal, 1) != 0 { // has decimal part
-                result = append(result, numVal)
-            }
-        }
+		if currentNode.IsNumber() {
+			numVal, err := currentNode.GetNumeric()
+			if err == nil && math.Mod(numVal, 1) != 0 { // has decimal part
+				result = append(result, numVal)
+			}
+		}
 
-        for _, childNode := range currentNode.next { // append child nodes to stack
-            stack = append(stack, childNode)
-        }
-    }
+		for _, childNode := range currentNode.next { // append child nodes to stack
+			stack = append(stack, childNode)
+		}
+	}
 
-    return result
+	return result
 }
 
 // MustNumeric returns the numeric (int/float) value if current node is number type.
@@ -892,30 +892,30 @@ func (n *Node) MustString() string {
 //	}
 func (n *Node) GetBools() []bool {
 	var stack []*Node
-    var result []bool
+	var result []bool
 
-    stack = append(stack, n)
+	stack = append(stack, n)
 
-    for len(stack) > 0 {
-        var currentNode *Node
-        currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1]
+	for len(stack) > 0 {
+		var currentNode *Node
+		currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1]
 
-        if currentNode == nil {
-            continue
-        }
+		if currentNode == nil {
+			continue
+		}
 
-        if currentNode.nodeType == Boolean {
-            if boolVal, err := currentNode.GetBool(); err == nil {
-                result = append(result, boolVal)
-            }
-        }
+		if currentNode.nodeType == Boolean {
+			if boolVal, err := currentNode.GetBool(); err == nil {
+				result = append(result, boolVal)
+			}
+		}
 
-        for _, childNode := range currentNode.next {
-            stack = append(stack, childNode)
-        }
-    }
+		for _, childNode := range currentNode.next {
+			stack = append(stack, childNode)
+		}
+	}
 
-    return result
+	return result
 }
 
 // GetBool returns the boolean value if current node is boolean type.
