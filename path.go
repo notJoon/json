@@ -1,129 +1,96 @@
 package json
 
 import (
-	"fmt"
-	"regexp"
-	"strings"
-	"unicode"
+	"errors"
+	"io"
 )
 
-// PathToken represents a token in a JSON path.
-type PathToken struct {
-	Type  string	// Type is the type of the token.
-	Value string	// Value is the value of the token.
+func Path(data []byte, path string) ([]*Node, error) {
+	buf := newBuffer([]byte(path))
+	root, err := Unmarshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*Node, 0)
+	// check first symbol
+	b, err := buf.current()
+	if err != nil {
+		return nil, errors.New("path: invalid path")
+	}
+	if b != dollarSign {
+		return nil, errors.New("path: invalid path (must start with $)")
+	}
+
+	var (
+		start int
+		found bool
+		childEnd = map[byte]bool{dot: true, bracketOpen: true}
+	)
+
+	for {
+		b, err := buf.current()
+		if err != nil {
+			break
+		}
+		switch b {
+		case dollarSign:
+			result = append(result, root)
+			err = buf.step()
+			found = true
+		case dot: // child / descendant operator
+			err = buf.step()
+			if err != nil {
+				break
+			}
+			start = buf.index
+			err = buf.skipAny(childEnd)
+			if err == io.EOF {
+				err = nil
+			}
+			if err != nil {
+				break
+			}
+			if buf.index-start == 0 {
+				temp := make([]*Node, 0)
+				for _, elem := range result {
+					temp = append(temp, recursiveDescend(elem)...)
+				}
+				result = append(result, temp...)
+			} else if buf.index-start == 1 && buf.data[start] == aesterisk {
+				temp := make([]*Node, 0)
+				for _, elem := range result {
+					temp = append(temp, elem.Inheritors()...)
+				}
+				result = temp
+			}
+			found = true
+		}
+		if err != nil {
+			break
+		}
+	}
+	if err == io.EOF {
+		if found {
+			err = nil
+		} else {
+			err = errors.New("path: invalid path")
+		}
+	}
+	return result, err
 }
 
-// Tokenize breaks a JSON path into tokens.
-func tokenize(path string) ([]PathToken, error) {
-	var tokens []PathToken
-	i := 0
-	n := len(path)
-
-	for i < n {
-		switch {
-		case path[i] == '$':
-			tokens = append(tokens, PathToken{"ROOT", "$"})
-			i++
-
-		case path[i] == '.':
-			tokens = append(tokens, PathToken{"DOT", "."})
-			i++
-
-		case path[i] == '*':
-			tokens = append(tokens, PathToken{"WILDCARD", "*"})
-			i++
-
-		case path[i] == '[':
-			j := i
-			if j < n && path[j] == '[' {
-				for j < n && path[j] != ']' {
-					j++
-				}
-				if j < n && path[j] == ']' {
-					j++ // Include the closing bracket
-					tokens = append(tokens, PathToken{"BRACKET", path[i:j]})
-					i = j
-				} else {
-					return nil, fmt.Errorf("mismatched brackets")
-				}
-			}
-
-		case path[i] == '"' || path[i] == '\'':
-			delimiter := path[i]
-			i++
-			start := i
-			for i < n && path[i] != delimiter {
-				if path[i] == '\\' { // Handle escaped quotes
-					i++
-				}
-				i++
-			}
-			if i < n && path[i] == delimiter {
-				tokens = append(tokens, PathToken{"STRING", path[start:i]})
-				i++
-			} else {
-				return nil, fmt.Errorf("unterminated string")
-			}
-
-		case path[i] == '?' || path[i] == '(' || path[i] == ')':
-			tokens = append(tokens, PathToken{string(path[i]), string(path[i])})
-			i++
-
-		case unicode.IsDigit(rune(path[i])) || path[i] == '-':
-			start := i
-			i++
-			for i < n && unicode.IsDigit(rune(path[i])) {
-				i++
-			}
-			tokens = append(tokens, PathToken{"NUMBER", path[start:i]})
-
-		default:
-			if regexp.MustCompile(`[a-zA-Z_]+`).MatchString(string(path[i])) {
-				start := i
-				for i < n && regexp.MustCompile(`[a-zA-Z0-9_]+`).MatchString(string(path[i])) {
-					i++
-				}
-				tokens = append(tokens, PathToken{"IDENTIFIER", path[start:i]})
-			} else {
-				i++
+func recursiveDescend(node *Node) []*Node {
+	result := make([]*Node, 0)
+	if node.isContainer() {
+		for _, elem := range node.Inheritors() {
+			if elem.isContainer() {
+				result = append(result, elem)
 			}
 		}
 	}
-
-	return tokens, nil
-}
-
-// ClassifiedToken represents a token in a JSON path that has been classified.
-type ClassifiedToken struct {
-	PathToken
-	Class string	// Class is the classification of the token.
-}
-
-// Classify classifies tokens in a JSON path.
-func classify(tokens []PathToken) ([]ClassifiedToken, error) {
-	var classified []ClassifiedToken
-	for _, token := range tokens {
-		switch token.Type {
-		case "ROOT", "DOT", "WILDCARD":
-			classified = append(classified, ClassifiedToken{token, "OPERATOR"})
-		case "BRACKET":
-			if strings.HasPrefix(token.Value, "[*]") {
-				classified = append(classified, ClassifiedToken{PathToken: token, Class: "ARRAY_WILDCARD"})
-			} else if strings.Contains(token.Value, "?") {
-				classified = append(classified, ClassifiedToken{PathToken: token, Class: "FILTER"})
-			} else if strings.ContainsAny(token.Value, ":") {
-				classified = append(classified, ClassifiedToken{PathToken: token, Class: "SLICE"})
-			} else {
-				classified = append(classified, ClassifiedToken{PathToken: token, Class: "ARRAY_INDEX_OR_KEY"})
-			}
-		case "STRING", "NUMBER":
-			classified = append(classified, ClassifiedToken{PathToken: token, Class: "LITERAL"})
-		case "IDENTIFIER":
-			classified = append(classified, ClassifiedToken{PathToken: token, Class: "IDENTIFIER"})
-		default:
-			return nil, fmt.Errorf("unclassified token type: %s", token.Type)
-		}
+	for _, elem := range result {
+		result = append(result, recursiveDescend(elem)...)
 	}
-
-	return classified, nil
+	return result
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -138,6 +139,17 @@ func (n *Node) UniqueKeys() []string {
 	}
 
 	return collectKeys(n)
+}
+
+func (n *Node) Keys() []string {
+	if n == nil {
+		return nil
+	}
+	result := make([]string, 0, len(n.next))
+	for key := range n.next {
+		result = append(result, key)
+	}
+	return result
 }
 
 // TODO: implement the EachKey method. this takes a callback function and executes it for each key in the object node.
@@ -1469,4 +1481,123 @@ func Must(root *Node, expect error) *Node {
 	}
 
 	return root
+}
+
+func (n *Node) Inheritors() []*Node {
+	var result []*Node
+	if n == nil {
+		return nil
+	}
+	size := len(n.next)
+	if n.IsObject() {
+		result = make([]*Node, size)
+		keys := stringSlice(n.Keys())
+		sort.Sort(keys)
+		for i, key := range keys {
+			result[i] = n.next[key]
+		}
+	} else if n.IsArray() {
+		result = make([]*Node, size)
+		for _, elem := range n.next {
+			result[*elem.index] = elem
+		}
+	}
+	return result
+}
+
+type stringSlice []string
+
+func (s stringSlice) Len() int {
+	return len(s)
+}
+
+func (s stringSlice) Less(i, j int) bool {
+	return s[i] < s[j]
+}
+
+func (s stringSlice) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (n *Node) Eq(node *Node) (bool, error) {
+	if n == nil || node == nil {
+		return false, errors.New("node is nil")
+	}
+
+	if n.Type() == node.Type() {
+		switch n.Type() {
+		case Boolean:
+			l, err := n.GetBool()
+			if err != nil {
+				return false, err
+			}
+			r, err := node.GetBool()
+			if err != nil {
+				return false, err
+			}
+			return l == r, nil
+		case Number:
+			l, err := n.GetNumeric()
+			if err != nil {
+				return false, err
+			}
+			r, err := node.GetNumeric()
+			if err != nil {
+				return false, err
+			}
+			return l == r, nil
+		case String:
+			l, err := n.GetString()
+			if err != nil {
+				return false, err
+			}
+			r, err := node.GetString()
+			if err != nil {
+				return false, err
+			}
+			return l == r, nil
+		case Null:
+			return true, nil
+		case Array:
+			l, err := n.GetArray()
+			if err != nil {
+				return false, err
+			}
+			r, err := node.GetArray()
+			if err != nil {
+				return false, err
+			}
+			if len(l) == len(r) {
+				for i := range l {
+					result, err := l[i].Eq(r[i])
+					if err != nil || !result {
+						return false, err
+					}
+				}
+			}
+		case Object:
+			l, err := n.GetObject()
+			if err != nil {
+				return false, err
+			}
+			r, err := n.GetObject()
+			if err != nil {
+				return false, err
+			}
+			if len(l) == len(r) {
+				result := true
+				for i := range l {
+					elem, ok := r[i]
+					if !ok {
+						return false, nil
+					}
+					result, err = l[i].Eq(elem)
+					if err != nil || !result {
+						return false, err
+					}
+				}
+			}
+		}
+	}
+	return true, nil
 }

@@ -1,105 +1,69 @@
 package json
 
 import (
+	"strings"
 	"testing"
 )
 
-func TestPath_Tokenize(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		jsonPath string
-		expected []PathToken
-	}{
-		{
-			"$.store.book[*].author",
-			[]PathToken{{"ROOT", "$"}, {"DOT", "."}, {"IDENTIFIER", "store"}, {"DOT", "."}, {"IDENTIFIER", "book"}, {"BRACKET", "[*]"}, {"DOT", "."}, {"IDENTIFIER", "author"}},
-		},
-		{
-			"$['store']['book'][0]['title']",
-			[]PathToken{{"ROOT", "$"}, {"BRACKET", "['store']"}, {"BRACKET", "['book']"}, {"BRACKET", "[0]"}, {"BRACKET", "['title']"}},
-		},
-		{
-			"$[?(@.age >= 25)]",
-			[]PathToken{{"ROOT", "$"}, {"BRACKET", "[?(@.age >= 25)]"}},
-		},
-		{
-			"$.person.name",
-			[]PathToken{{"ROOT", "$"}, {"DOT", "."}, {"IDENTIFIER", "person"}, {"DOT", "."}, {"IDENTIFIER", "name"}},
-		},
-		{
-			"$['person']['name']",
-			[]PathToken{{"ROOT", "$"}, {"BRACKET", "['person']"}, {"BRACKET", "['name']"}},
-		},
-	}
+var bookStoreData = []byte(`{ "store": {
+    "book": [ 
+      { "category": "reference",
+        "author": "Nigel Rees",
+        "title": "Sayings of the Century",
+        "price": 8.95
+      },
+      { "category": "fiction",
+        "author": "Evelyn Waugh",
+        "title": "Sword of Honour",
+        "price": 12.99
+      },
+      { "category": "fiction",
+        "author": "Herman Melville",
+        "title": "Moby Dick",
+        "isbn": "0-553-21311-3",
+        "price": 8.99
+      },
+      { "category": "fiction",
+        "author": "J. R. R. Tolkien",
+        "title": "The Lord of the Rings",
+        "isbn": "0-395-19395-8",
+        "price": 22.99
+      }
+    ],
+    "bicycle": {
+      "color": "red",
+      "price": 19.95
+    }
+  }
+}`)
 
-	for _, tt := range tests {
-		tt := tt
-		got, err := tokenize(tt.jsonPath)
-		if err != nil {
-			t.Errorf("tokenize(%q) resulted in an error: %v", tt.jsonPath, err)
-		}
-		if len(got) != len(tt.expected) {
-			t.Errorf("tokenize(%q) = %v, expected %v", tt.jsonPath, got, tt.expected)
-		}
-		for i := range got {
-			if got[i] != tt.expected[i] {
-				t.Errorf("tokenize(%q)[%d] = {%q, %q}, expected {%q, %q}", tt.jsonPath, i, got[i].Type, got[i].Value, tt.expected[i].Type, tt.expected[i].Value)
-			}
-		}
+func fullPath(array []*Node) string {
+	result := make([]string, 0, len(array))
+	for _, element := range array {
+		result = append(result, element.Path())
 	}
+	return "[" + strings.Join(result, ", \n") + "]"
 }
 
-func TestClassify(t *testing.T) {
-	t.Parallel()
-    tests := []struct {
-        tokens   []PathToken
-        expected []ClassifiedToken
-    }{
-        {
-            []PathToken{
-                {Type: "ROOT", Value: "$"},
-                {Type: "DOT", Value: "."},
-                {Type: "IDENTIFIER", Value: "store"},
-                {Type: "DOT", Value: "."},
-                {Type: "IDENTIFIER", Value: "book"},
-                {Type: "BRACKET", Value: "[*]"},
-                {Type: "DOT", Value: "."},
-                {Type: "IDENTIFIER", Value: "author"},
-                {Type: "BRACKET", Value: "[?(@.price<20)]"},
-                {Type: "BRACKET", Value: "[1:3]"},
-                {Type: "BRACKET", Value: "[0]"},
-                {Type: "STRING", Value: "'John Doe'"},
-            },
-            []ClassifiedToken{
-                {PathToken{Type: "ROOT", Value: "$"}, "OPERATOR"},
-                {PathToken{Type: "DOT", Value: "."}, "OPERATOR"},
-                {PathToken{Type: "IDENTIFIER", Value: "store"}, "IDENTIFIER"},
-                {PathToken{Type: "DOT", Value: "."}, "OPERATOR"},
-                {PathToken{Type: "IDENTIFIER", Value: "book"}, "IDENTIFIER"},
-                {PathToken{Type: "BRACKET", Value: "[*]"}, "ARRAY_WILDCARD"},
-                {PathToken{Type: "DOT", Value: "."}, "OPERATOR"},
-                {PathToken{Type: "IDENTIFIER", Value: "author"}, "IDENTIFIER"},
-                {PathToken{Type: "BRACKET", Value: "[?(@.price<20)]"}, "FILTER"},
-                {PathToken{Type: "BRACKET", Value: "[1:3]"}, "SLICE"},
-                {PathToken{Type: "BRACKET", Value: "[0]"}, "ARRAY_INDEX_OR_KEY"},
-                {PathToken{Type: "STRING", Value: "'John Doe'"}, "LITERAL"},
-            },
-        },
-    }
-
-    for _, tt := range tests {
-		tt := tt
-        got, err := classify(tt.tokens)
-        if err != nil {
-            t.Errorf("classify resulted in an error: %v", err)
-        }
-        if len(got) != len(tt.expected) {
-            t.Errorf("classify = %v, expected %v", got, tt.expected)
-        }
-        for i := range got {
-            if got[i] != tt.expected[i] {
-                t.Errorf("classify[%d] = {%q, %q, %q}, expected {%q, %q, %q}", i, got[i].Type, got[i].Value, got[i].Class, tt.expected[i].Type, tt.expected[i].Value, tt.expected[i].Class)
-            }
-        }
-    }
+func TestBasicPath(t *testing.T) {
+	tests := []struct {
+		name  string
+		path  string
+		count int
+	}{
+		{name: "root", path: "$", count: 1},
+		{name: "roots", path: "$.", count: 1},
+		{name: "all objects", path: "$..", count: 8},
+		{name: "only children", path: "$.*", count: 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := Path(bookStoreData, test.path)
+			if err != nil {
+				t.Errorf("Error on Path `%s` as %s: %s", test.path, test.name, err.Error())
+			} else if len(result) != test.count {
+				t.Errorf("Error on Path `%s` as %s: length must be %d found %d\n%s", test.path, test.name, test.count, len(result), fullPath(result))
+			}
+		})
+	}
 }
