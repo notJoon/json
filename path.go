@@ -4,34 +4,40 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"strconv"
 	"strings"
 )
 
 var (
-	errUnexpectedEOF    = errors.New("unexpected EOF")
-	errUnexpectedChar   = errors.New("unexpected character")
-	errStringNotClosed  = errors.New("string not closed")
-	errBracketNotClosed = errors.New("bracket not closed")
+	errUnexpectedEOF          = errors.New("unexpected EOF")
+	errUnexpectedChar         = errors.New("unexpected character")
+	errStringNotClosed        = errors.New("string not closed")
+	errBracketNotClosed       = errors.New("bracket not closed")
+	errInvalidSlicePathSyntax = errors.New("invalid slice path syntax")
+	errInvalidSliceFromValue  = errors.New("invalid slice from value")
+	errInvalidSliceToValue    = errors.New("invalid slice to value")
+	errInvalidSliceStepValue  = errors.New("invalid slice step value")
 )
 
-// JSONPath returns the nodes that match the given JSON path.
+// Path returns the nodes that match the given JSON path.
 //
 // It parses the JSON path, unmarshals the JSON data, and processes each command in the path
 // to traverse the JSON structure and retrieve the matching nodes.
 //
-// JSONPath expressions:
+// Path expressions:
 //
 //	$	the root object/element
 //	@	the current object/element
 //	. or []	child operator
-//	..	recursive descent. JSONPath borrows this syntax from E4X.
+//	..	recursive descent. Path borrows this syntax from E4X.
 //	*	wildcard. All objects/elements regardless their names.
 //	[]	subscript operator. XPath uses it to iterate over element collections and for predicates. In Javascript and JSON it is the native array operator.
-//	[,]	Union operator in XPath results in a combination of node sets. JSONPath allows alternate names or array indices as a set.
+//	[,]	Union operator in XPath results in a combination of node sets. Path allows alternate names or array indices as a set.
 //	[start:end:step]	array slice operator borrowed from ES4.
 //	?()	applies a filter (script) expression.
 //	()	script expression, using the underlying script engine.
-func JSONPath(data []byte, path string) ([]*Node, error) {
+func Path(data []byte, path string) ([]*Node, error) {
 	commands, err := ParsePath(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse path: %v", err)
@@ -62,11 +68,13 @@ func JSONPath(data []byte, path string) ([]*Node, error) {
 //
 // It determines the type of command and calls the corresponding function to handle the command.
 func processCommand(cmd string, nodes []*Node) ([]*Node, error) {
-	switch cmd {
-	case "..":
+	switch {
+	case cmd == "..":
 		return processRecursiveDescent(nodes), nil
-	case "*":
+	case cmd == "*":
 		return processWildcard(nodes), nil
+	case strings.Contains(cmd, ":"):
+		return processSlice(cmd, nodes)
 	default:
 		return processKeyUnion(cmd, nodes), nil
 	}
@@ -327,5 +335,118 @@ func Paths(array []*Node) []string {
 	for _, element := range array {
 		result = append(result, element.Path())
 	}
+	return result
+}
+
+// processSlice processes a slice path on the given nodes.
+//
+// The slice path has the following syntax:
+//
+//	[start:end:step]
+//
+//   - start: The starting index of the slice (inclusive). if omitted, it defaults to 0.
+//     If negative, it counts from the end of the array.
+//   - end: The ending index of the slice (exclusive). if omitted, it defaults to the length of the array.
+//     If negative, it counts from the end of the array.
+//   - step: The step value for the slice. if omitted, it defaults to 1.
+//
+// The function performs the following steps:
+//
+// 1. Split the slice path into start, end, and step values.
+//
+// 2. Parses the each syntax components as integers.
+//
+// 3. For each node in the given nodes:
+//   - If the node is an array:
+//   - Calculate the length of the array.
+//   - Adjust the start and end values if they are negative.
+//   - Check if the slice range is within the bounds of the array.
+//   - Iterate over the array elements based on the start, end and step values.
+//   - Append the selected elements to the result slice.
+//
+// It returns the slice of selected nodes and any error encountered during the parsing process.
+func processSlice(cmd string, nodes []*Node) ([]*Node, error) {
+	from, to, step, err := parseSliceParams(cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*Node
+	for _, node := range nodes {
+		if node.IsArray() {
+			result = append(result, selectArrayElement(node, from, to, step)...)
+		}
+	}
+
+	return result, nil
+}
+
+// parseSliceParams parses the slice parameters from the given path command.
+func parseSliceParams(cmd string) (int64, int64, int64, error) {
+	keys := strings.Split(cmd, ":")
+	ks := len(keys)
+	if ks > 3 {
+		return 0, 0, 0, errInvalidSlicePathSyntax
+	}
+
+	from, err := strconv.ParseInt(keys[0], 10, 64)
+	if err != nil {
+		return 0, 0, 0, errInvalidSliceFromValue
+	}
+
+	to := int64(0)
+	if ks > 1 {
+		to, err = strconv.ParseInt(keys[1], 10, 64)
+		if err != nil {
+			return 0, 0, 0, errInvalidSliceToValue
+		}
+	}
+
+	step := int64(1)
+	if ks == 3 {
+		step, err = strconv.ParseInt(keys[2], 10, 64)
+		if err != nil {
+			return 0, 0, 0, errInvalidSliceStepValue
+		}
+	}
+
+	return from, to, step, nil
+}
+
+// selectArrayElement selects the array elements based on the given from, to, and step values.
+func selectArrayElement(node *Node, from, to, step int64) []*Node {
+	length := int64(len(node.next))
+
+	if to == 0 {
+		to = length
+	}
+
+	if from < 0 {
+		from += length
+	}
+
+	if to < 0 {
+		to += length
+	}
+
+	from = int64(math.Max(0, math.Min(float64(from), float64(length))))
+	to = int64(math.Max(0, math.Min(float64(to), float64(length))))
+
+	if step <= 0 || from >= to {
+		return nil
+	}
+
+	// This formula calculates the number of elements that will be selected based on the given
+	// from, to, and step values. It ensures that the correct number of elements are allocated
+	// in the result slice.
+	size := (to - from + step - 1) / step
+	result := make([]*Node, 0, size)
+
+	for i := from; i < to; i += step {
+		if child, ok := node.next[fmt.Sprintf("%d", i)]; ok {
+			result = append(result, child)
+		}
+	}
+
 	return result
 }
