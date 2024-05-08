@@ -55,6 +55,8 @@ func TestJSONPath(t *testing.T) {
 		{name: "root", path: "$", expected: "[$]"},
 		{name: "roots", path: "$.", expected: "[$]"},
 		{name: "by key", path: "$.education.degree", expected: "[$['education']['degree']]"},
+		{name: "all key", path: "$..degree", expected: "[$['education']['degree']]"},
+		{name: "all key with bracket", path: "$..['degree']", expected: "[$['education']['degree']]"},
 	}
 
 	for _, tt := range tests {
