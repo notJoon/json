@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 )
 
 type buffer struct {
@@ -121,16 +120,7 @@ func (b *buffer) skipAny(endTokens map[byte]bool) error {
 		b.index++
 	}
 
-	// build error message
-	var tokens []string
-	for token := range endTokens {
-		tokens = append(tokens, string(token))
-	}
-
-	return fmt.Errorf(
-		"EOF reached before encountering one of the expected tokens: %s",
-		strings.Join(tokens, ", "),
-	)
+	return io.EOF
 }
 
 // skipAndReturnIndex moves the buffer index forward by one and returns the new index.
@@ -397,6 +387,21 @@ func (b *buffer) getState() States {
 }
 
 // string parses a string token from the buffer.
+//
+// The function takes a byte 'search' and a boolean 'token'.
+// 'search' is the byte that the function is looking for in the buffer.
+// If 'token' is set to true, the buffer will parse the string as a token.
+// Otherwise, it will parse the string as a value.
+//
+// The function iterates over the buffer until it finds the 'search' byte or reaches the end of the buffer.
+// For each byte, it determines its class using the 'getClasses' method and updates the 'class' property of the buffer.
+//
+// It then uses the 'StateTransitionTable' to determine the next state based on the current 'last' state and the 'class' of the current byte.
+// If an invalid state is encountered, it returns an error.
+//
+// If a valid state less than '__' is encountered, it breaks the loop and updates the 'last' state of the buffer.
+//
+// The function returns nil if it successfully parses the string.
 func (b *buffer) string(search byte, token bool) error {
 	if token {
 		b.last = GO
@@ -424,6 +429,16 @@ func (b *buffer) string(search byte, token bool) error {
 	return nil
 }
 
+// word is a method on the buffer struct that checks if the next sequence of bytes in the buffer matches the provided byte slice 'bs'.
+//
+// The function iterates over the buffer from the current index until the end of the buffer or until it has checked all bytes in 'bs'.
+// For each byte in the buffer, it checks if it matches the corresponding byte in 'bs'.
+// If it encounters a byte that does not match, it returns an error indicating an invalid token was found while parsing the path.
+//
+// If it successfully checks all bytes in 'bs' without encountering a mismatch, it breaks the loop.
+// After the loop, it checks if it has checked all bytes in 'bs'. If not, it returns an error indicating an invalid token was found while parsing the path.
+//
+// If it has checked all bytes in 'bs' and all of them matched, it returns nil indicating successful parsing.
 func (b *buffer) word(bs []byte) error {
 	var c byte
 

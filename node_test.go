@@ -373,7 +373,6 @@ func TestNode_AppendObject(t *testing.T) {
 	}
 
 	val, err := Marshal(root)
-
 	if err != nil {
 		t.Errorf("Marshal returns error: %v", err)
 	}
@@ -911,7 +910,6 @@ func TestNode_MustString(t *testing.T) {
 
 func TestUnmarshal_Array(t *testing.T) {
 	root, err := Unmarshal([]byte(" [1,[\"1\",[1,[1,2,3]]]]\r\n"))
-
 	if err != nil {
 		t.Errorf("Error on Unmarshal: %s", err.Error())
 	}
@@ -1147,7 +1145,6 @@ func TestNode_Index_Fail(t *testing.T) {
 				t.Errorf("Index() = %v, want %v", got, tt.want)
 			}
 		})
-
 	}
 }
 
@@ -2012,7 +2009,7 @@ func TestNode_Inheritors(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result := test.node.Inheritors()
+			result := test.node.getSortedChildren()
 			if len(result) != len(test.expected) {
 				t.Errorf("Failed: wrong size")
 			} else {
