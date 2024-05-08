@@ -149,7 +149,7 @@ var pathSegmentDelimiters = map[byte]bool{dot: true, bracketOpen: true}
 //   - Single dot ('.') followed by a child end character: Appends the substring between the dots to the result slice.
 //   - Double dot ('..'): Appends ".." to the result slice.
 //   - Opening bracket ('['): Calls the processBracketOpen function to handle the opening bracket token.
-//   - Single quote (”') after the opening bracket: Calls the processSingleQuote function to handle the string within single quotes.
+//   - Single quote ('”') after the opening bracket: Calls the processSingleQuote function to handle the string within single quotes.
 //   - Any other character after the opening bracket: Calls the processWithoutSingleQuote function to handle the string without single quotes.
 //
 // The function returns the slice of parsed commands and any error encountered during the parsing process.
@@ -240,7 +240,7 @@ func processDot(buf *buffer, result []string) ([]string, error) {
 // processBracketOpen handles the processing when an opening bracket character ('[') is found in the buffer.
 //
 // It reads the next character in the buffer and determines the appropriate processing based on the character:
-//   - If the next character is a single quote (”'), it calls the processSingleQuote function to handle the string within single quotes.
+//   - If the next character is a single quote (`'`), it calls the processSingleQuote function to handle the string within single quotes.
 //   - Otherwise, it calls the processWithoutSingleQuote function to handle the string without single quotes.
 //
 // It returns the updated result slice and any error encountered.
@@ -264,7 +264,7 @@ func processBracketOpen(buf *buffer, result []string) ([]string, error) {
 	return result, nil
 }
 
-// processSingleQuote handles the processing when a single quote character (”') is encountered after an opening bracket ('[') in the buffer.
+// processSingleQuote handles the processing when a single quote character (`'`) is encountered after an opening bracket ('[') in the buffer.
 //
 // It assumes that the current position of the buffer is just after the single quote character.
 //
@@ -300,7 +300,7 @@ func processSingleQuote(buf *buffer, result []string, start int) ([]string, erro
 }
 
 // processWithoutSingleQuote handles the processing when a character other than
-// a single quote (”') is encountered after an opening bracket ('[') in the buffer.
+// a single quote (`'`) is encountered after an opening bracket ('[') in the buffer.
 //
 // It assumes that the current position of the buffer is just after the opening bracket.
 //
