@@ -7,17 +7,19 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 var (
-	errUnexpectedEOF          = errors.New("unexpected EOF")
-	errUnexpectedChar         = errors.New("unexpected character")
-	errStringNotClosed        = errors.New("string not closed")
-	errBracketNotClosed       = errors.New("bracket not closed")
-	errInvalidSlicePathSyntax = errors.New("invalid slice path syntax")
-	errInvalidSliceFromValue  = errors.New("invalid slice from value")
-	errInvalidSliceToValue    = errors.New("invalid slice to value")
-	errInvalidSliceStepValue  = errors.New("invalid slice step value")
+	errUnexpectedEOF             = errors.New("unexpected EOF")
+	errUnexpectedChar            = errors.New("unexpected character")
+	errStringNotClosed           = errors.New("string not closed")
+	errBracketNotClosed          = errors.New("bracket not closed")
+	errInvalidSlicePathSyntax    = errors.New("invalid slice path syntax")
+	errInvalidSliceFromValue     = errors.New("invalid slice from value")
+	errInvalidSliceToValue       = errors.New("invalid slice to value")
+	errInvalidSliceStepValue     = errors.New("invalid slice step value")
+	errParenthesisMismatchInPath = errors.New("parenthesis mismatch in path")
 )
 
 // Path returns the nodes that match the given JSON path.
@@ -38,7 +40,7 @@ var (
 //	?()	applies a filter (script) expression.
 //	()	script expression, using the underlying script engine.
 func Path(data []byte, path string) ([]*Node, error) {
-	commands, err := ParsePath(path)
+	commands, err := parsePath(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse path: %v", err)
 	}
@@ -76,7 +78,12 @@ func processCommand(cmd string, nodes []*Node) ([]*Node, error) {
 	case strings.Contains(cmd, ":"):
 		return processSlice(cmd, nodes)
 	default:
-		return processKeyUnion(cmd, nodes), nil
+		// return processKeyUnion(cmd, nodes), nil
+		res, err := processKeyUnion(cmd, nodes)
+		if err != nil {
+			return nil, err
+		}
+		return res, nil
 	}
 }
 
@@ -105,8 +112,47 @@ func processWildcard(nodes []*Node) []*Node {
 // processKeyUnion processes a key union command on the given nodes.
 //
 // It retrieves the child nodes of each node in the given slice that match any of the specified keys
-func processKeyUnion(cmd string, nodes []*Node) []*Node {
-	keys := strings.Split(cmd, ",")
+func processKeyUnion(cmd string, nodes []*Node) ([]*Node, error) {
+	buf := newBuffer([]byte(cmd))
+	keys := make([]string, 0)
+
+	for {
+		c, err := buf.first()
+		if err != nil {
+			return nil, err
+		}
+
+		if c == comma {
+			return nil, errUnexpectedChar
+		}
+
+		from := buf.index
+		err = buf.pathToken()
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+
+		key := string(buf.data[from:buf.index])
+		if len(key) > 2 && key[0] == singleQuote && key[len(key)-1] == singleQuote {
+			key = key[1 : len(key)-1]
+		}
+
+		keys = append(keys, key)
+		c, err = buf.first()
+		if err != nil {
+			err = nil
+			break
+		}
+
+		if c != comma {
+			return nil, errUnexpectedChar
+		}
+
+		err = buf.step()
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	var result []*Node
 	for _, node := range nodes {
@@ -120,7 +166,7 @@ func processKeyUnion(cmd string, nodes []*Node) []*Node {
 			}
 		}
 	}
-	return result
+	return result, nil
 }
 
 // recursiveChildren returns all the recursive child nodes of the given node that are containers.
@@ -148,7 +194,7 @@ func recursiveChildren(node *Node) (result []*Node) {
 
 var pathSegmentDelimiters = map[byte]bool{dot: true, bracketOpen: true}
 
-// ParsePath parses the given path string and returns a slice of commands to be run.
+// parsePath parses the given path string and returns a slice of commands to be run.
 //
 // The function uses a state machine approach to parse the path based on the encountered tokens.
 // It supports the following tokens and their corresponding states:
@@ -162,7 +208,7 @@ var pathSegmentDelimiters = map[byte]bool{dot: true, bracketOpen: true}
 //
 // The function returns the slice of parsed commands and any error encountered during the parsing process.
 // If an unexpected character is encountered, an error (errUnexpectedChar) is returned.
-func ParsePath(path string) ([]string, error) {
+func parsePath(path string) ([]string, error) {
 	buf := newBuffer([]byte(path))
 	result := make([]string, 0)
 
@@ -342,13 +388,13 @@ func Paths(array []*Node) []string {
 //
 // The slice path has the following syntax:
 //
-//	[start:end:step]
+//		[start:end:step]
 //
-//   - start: The starting index of the slice (inclusive). if omitted, it defaults to 0.
-//     If negative, it counts from the end of the array.
-//   - end: The ending index of the slice (exclusive). if omitted, it defaults to the length of the array.
-//     If negative, it counts from the end of the array.
-//   - step: The step value for the slice. if omitted, it defaults to 1.
+//	  - start: The starting index of the slice (inclusive). if omitted, it defaults to 0.
+//	    If negative, it counts from the end of the array.
+//	  - end: The ending index of the slice (exclusive). if omitted, it defaults to the length of the array.
+//	    If negative, it counts from the end of the array.
+//	  - step: The step value for the slice. if omitted, it defaults to 1.
 //
 // The function performs the following steps:
 //
@@ -449,4 +495,171 @@ func selectArrayElement(node *Node, from, to, step int64) []*Node {
 	}
 
 	return result
+}
+
+// parseFilterExpr removes the filter prefix (`?(`) and the filter suffix (`)`) from the given command.
+// After removing the prefix and suffix, it splits the command into tokens based on the comma (`,`) character.
+func parseFilterExpression(cmd string) ([]string, error) {
+	expr := strings.TrimPrefix(cmd, "?(")
+	expr = strings.TrimSuffix(expr, ")")
+
+	tokens, err := tokenizeExpression(expr)
+	if err != nil {
+		return nil, err
+	}
+
+	rpnTokens, err := convertToRPN(tokens)
+	if err != nil {
+		return nil, err
+	}
+
+	return rpnTokens, nil
+}
+
+// tokenizeExpression tokenize the given expression string into a slice of tokens.
+// it handles quoted strings, parenthesis, commas, and variable references starting with '@' symbol.
+//
+// The function iterates through each character of the expression string and builds the tokens accordingly.
+// It uses a strings.Builder to efficiently concatenate characters into tokens.
+//
+// Rules for tokenization:
+//   - Quoted strings (enclosed in single quotes ') are treated as a single token.
+//   - Parentheses '(' and ')' and commas ',' are treated as separate tokens.
+//   - Variable references starting with '@' followed by '.' and alphanumeric characters or underscore are treated as a single token.
+//   - Whitespace characters are used as token separators.
+//
+// Returns a slice of strings representing the tokens of the expression.
+// Returns an error if the expression is invalid (e.g., unmatched quotes).
+func tokenizeExpression(expr string) ([]string, error) {
+	var (
+		tokens   []string
+		token    strings.Builder
+		inQuotes bool
+	)
+
+	for i := 0; i < len(expr); i++ {
+		char := expr[i]
+
+		if char == '\'' {
+			if inQuotes {
+				token.WriteByte(char)
+				tokens = append(tokens, token.String())
+				token.Reset()
+				inQuotes = false
+			} else {
+				if token.Len() > 0 {
+					tokens = append(tokens, token.String())
+					token.Reset()
+				}
+				token.WriteByte(char)
+				inQuotes = true
+			}
+		} else if inQuotes {
+			token.WriteByte(char)
+		} else if char == '(' || char == ')' || char == ',' {
+			if token.Len() > 0 {
+				tokens = append(tokens, token.String())
+				token.Reset()
+			}
+			tokens = append(tokens, string(char))
+		} else if char == ' ' {
+			if token.Len() > 0 {
+				tokens = append(tokens, token.String())
+				token.Reset()
+			}
+		} else if char == '@' {
+			if token.Len() > 0 {
+				tokens = append(tokens, token.String())
+				token.Reset()
+			}
+			token.WriteByte(char)
+			if i+1 < len(expr) && expr[i+1] == '.' {
+				i++
+				for i < len(expr) && (isAlphaNumeric(expr[i]) || expr[i] == '_') {
+					token.WriteByte(expr[i])
+					i++
+				}
+				i--
+			}
+		} else {
+			token.WriteByte(char)
+		}
+	}
+
+	if token.Len() > 0 {
+		tokens = append(tokens, token.String())
+	}
+
+	return tokens, nil
+}
+
+func isAlphaNumeric(char byte) bool {
+	return unicode.IsLetter(rune(char)) || unicode.IsDigit(rune(char))
+}
+
+// convertToRPN converts an infix expression to Reverse Polish Notation (RPN).
+// It takes a slice of strings representing the path tokens -- especially the filter expression --
+// of the infix expression and returns the RPN format of the expression.
+//
+// This RPN format will make it easier to evaluate the expression.
+func convertToRPN(tokens []string) ([]string, error) {
+	var output, stack []string
+
+	for _, token := range tokens {
+		if isOperand(token) {
+			output = append(output, token)
+		} else if isOperator(token) {
+			for len(stack) > 0 && precedence(token) <= precedence(stack[len(stack)-1]) {
+				output = append(output, stack[len(stack)-1])
+				stack = stack[:len(stack)-1]
+			}
+			stack = append(stack, token)
+		} else if token == "(" {
+			stack = append(stack, token)
+		} else if token == ")" {
+			for len(stack) > 0 && stack[len(stack)-1] != "(" {
+				output = append(output, stack[len(stack)-1])
+				stack = stack[:len(stack)-1]
+			}
+			if len(stack) == 0 {
+				return nil, errParenthesisMismatchInPath
+			}
+			stack = stack[:len(stack)-1] // Pop "("
+		} else {
+			return nil, fmt.Errorf("unknown token: %s", token)
+		}
+	}
+
+	for len(stack) > 0 {
+		if stack[len(stack)-1] == "(" {
+			return nil, errParenthesisMismatchInPath
+		}
+		output = append(output, stack[len(stack)-1])
+		stack = stack[:len(stack)-1]
+	}
+
+	return output, nil
+}
+
+func isOperand(token string) bool {
+	return !isOperator(token) && token != "(" && token != ")"
+}
+
+func isOperator(token string) bool {
+	return token == "==" || token == "!=" || token == ">" || token == ">=" || token == "<" || token == "<=" || token == "&&" || token == "||"
+}
+
+func precedence(operator string) int {
+	switch operator {
+	case "||":
+		return 1
+	case "&&":
+		return 2
+	case "==", "!=":
+		return 3
+	case ">", ">=", "<", "<=":
+		return 4
+	default:
+		return 0
+	}
 }

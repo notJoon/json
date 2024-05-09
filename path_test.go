@@ -163,7 +163,7 @@ func TestParseJSONPath(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.path, func(t *testing.T) {
-			result, err := ParsePath(tt.path)
+			result, err := parsePath(tt.path)
 			if err != nil {
 				t.Errorf("error on path %s: %s", tt.path, err.Error())
 			} else if !sliceEqual(result, tt.expected) {
