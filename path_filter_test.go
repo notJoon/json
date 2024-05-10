@@ -1,6 +1,7 @@
 package json
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -189,4 +190,150 @@ func equalSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func TestResolveOperand(t *testing.T) {
+    tests := []struct {
+        name     string
+        operand  string
+        context  interface{}
+        expected interface{}
+        wantErr  bool
+    }{
+        {
+            name:     "Variable reference",
+            operand:  "@.name",
+            context:  map[string]interface{}{"name": "John"},
+            expected: "John",
+            wantErr:  false,
+        },
+        {
+            name:     "Nested variable reference",
+            operand:  "@.person.age",
+            context:  map[string]interface{}{"person": map[string]interface{}{"age": 30}},
+            expected: 30,
+            wantErr:  false,
+        },
+        {
+            name:     "String literal",
+            operand:  "'hello'",
+            context:  nil,
+            expected: "hello",
+            wantErr:  false,
+        },
+        {
+            name:     "Boolean literal (true)",
+            operand:  "true",
+            context:  nil,
+            expected: true,
+            wantErr:  false,
+        },
+        {
+            name:     "Boolean literal (false)",
+            operand:  "false",
+            context:  nil,
+            expected: false,
+            wantErr:  false,
+        },
+        {
+            name:     "Integer literal",
+            operand:  "42",
+            context:  nil,
+            expected: 42,
+            wantErr:  false,
+        },
+        {
+            name:     "Float literal",
+            operand:  "3.14",
+            context:  nil,
+            expected: 3.14,
+            wantErr:  false,
+        },
+        {
+            name:     "Invalid variable reference",
+            operand:  "@.age",
+            context:  map[string]interface{}{"name": "John"},
+            expected: nil,
+            wantErr:  true,
+        },
+        {
+            name:     "Invalid operand",
+            operand:  "invalid",
+            context:  nil,
+            expected: nil,
+            wantErr:  true,
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            result, err := resolveOperand(tt.operand, tt.context)
+            if (err != nil) != tt.wantErr {
+                t.Errorf("resolveOperand() error = %v, wantErr %v", err, tt.wantErr)
+                return
+            }
+            if !reflect.DeepEqual(result, tt.expected) {
+                t.Errorf("resolveOperand() result = %v, expected %v", result, tt.expected)
+            }
+        })
+    }
+}
+
+func TestGetValueFromContext(t *testing.T) {
+    tests := []struct {
+        name    string
+        context interface{}
+        path    []string
+        want    interface{}
+        wantErr bool
+    }{
+        {
+            name:    "Simple key",
+            context: map[string]interface{}{"name": "John"},
+            path:    []string{"name"},
+            want:    "John",
+            wantErr: false,
+        },
+        {
+            name:    "Nested keys",
+            context: map[string]interface{}{"person": map[string]interface{}{"age": 30}},
+            path:    []string{"person", "age"},
+            want:    30,
+            wantErr: false,
+        },
+        {
+            name:    "Missing key",
+            context: map[string]interface{}{"name": "John"},
+            path:    []string{"age"},
+            want:    nil,
+            wantErr: true,
+        },
+        {
+            name:    "Invalid context type",
+            context: "invalid",
+            path:    []string{"name"},
+            want:    nil,
+            wantErr: true,
+        },
+        {
+            name:    "Empty path",
+            context: map[string]interface{}{"name": "John"},
+            path:    []string{},
+            want:    map[string]interface{}{"name": "John"},
+            wantErr: false,
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got, err := getValueFromContext(tt.context, tt.path)
+            if (err != nil) != tt.wantErr {
+                t.Errorf("getValueFromContext() error = %v, wantErr %v", err, tt.wantErr)
+                return
+            }
+            if !reflect.DeepEqual(got, tt.want) {
+                t.Errorf("getValueFromContext() got = %v, want %v", got, tt.want)
+            }
+        })
+    }
 }
