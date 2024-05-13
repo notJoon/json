@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"reflect"
 	"strconv"
 	"strings"
 	"unicode"
@@ -67,6 +66,31 @@ func Path(data []byte, path string) ([]*Node, error) {
 	return result, nil
 }
 
+func applyPath(node *Node, cmds []string) ([]*Node, error) {
+	result := make([]*Node, 0)
+
+	for i, cmd := range cmds {
+		if i == 0 && cmd == "$" { // root
+			result = append(result, node)
+			continue
+		}
+
+		if i == 0 && cmd == "@" { // current
+			result = append(result, node)
+			continue
+		}
+
+		result, err := processCommand(cmd, result)
+		if err != nil {
+			return nil, err
+		}
+
+		return result, nil
+	}
+
+	return result, nil
+}
+
 // processCommand processes a single command on the given nodes.
 //
 // It determines the type of command and calls the corresponding function to handle the command.
@@ -79,7 +103,7 @@ func processCommand(cmd string, nodes []*Node) ([]*Node, error) {
 	case strings.Contains(cmd, ":"):
 		return processSlice(cmd, nodes)
 	case strings.HasPrefix(cmd, "?(") && strings.HasSuffix(cmd, ")"):
-		panic("not implemented eval")
+		return processFilter(cmd, nodes)
 	default:
 		// return processKeyUnion(cmd, nodes), nil
 		res, err := processKeyUnion(cmd, nodes)
@@ -159,13 +183,31 @@ func processKeyUnion(cmd string, nodes []*Node) ([]*Node, error) {
 
 	var result []*Node
 	for _, node := range nodes {
-		if !node.isContainer() {
-			continue
-		}
-
-		for _, key := range keys {
-			if child, ok := node.next[key]; ok {
-				result = append(result, child)
+		if node.IsArray() {
+			for _, key := range keys {
+				if key == "length" {
+					value, err := functions["length"](node)
+					if err != nil {
+						return nil, err
+					}
+					result = append(result, value)
+				} else {
+					index, err := strconv.Atoi(key)
+					if err == nil {
+						if index < 0 {
+							index = node.Size() + index
+						}
+						if value, ok := node.next[strconv.Itoa(index)]; ok {
+							result = append(result, value)
+						}
+					}
+				}
+			}
+		} else if node.IsObject() {
+			for _, key := range keys {
+				if value, ok := node.next[key]; ok {
+					result = append(result, value)
+				}
 			}
 		}
 	}
@@ -223,6 +265,8 @@ func parsePath(path string) ([]string, error) {
 		switch b {
 		case dollarSign:
 			result = append(result, "$")
+		case atSign:
+			result = append(result, "@")
 		case dot:
 			result, err = processDot(buf, result)
 			if err != nil {
@@ -519,6 +563,45 @@ func parseFilterExpression(cmd string) ([]string, error) {
 	return rpnTokens, nil
 }
 
+func processFilter(cmd string, nodes []*Node) ([]*Node, error) {
+	expr, err := parseFilterExpression(cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*Node
+	for _, node := range nodes {
+		if node.isContainer() {
+			evaled, err := evaluateFilterExpression(node, expr, cmd)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, evaled...)
+		}
+	}
+
+	return result, nil
+}
+
+func evaluateFilterExpression(node *Node, expr []string, cmd string) ([]*Node, error) {
+	var result []*Node
+	for _, child := range node.getSortedChildren() {
+		val, err := eval(child, expr, cmd)
+		if err != nil {
+			return nil, err
+		}
+		if val != nil {
+			ok, err := boolean(val)
+			if err != nil || !ok {
+				continue
+			}
+			result = append(result, child)
+		}
+	}
+
+	return result, nil
+}
+
 // tokenizeExpression tokenize the given expression string into a slice of tokens.
 // it handles quoted strings, parenthesis, commas, and variable references starting with '@' symbol.
 //
@@ -559,7 +642,7 @@ func tokenizeExpression(expr string) ([]string, error) {
 			}
 		} else if inQuotes {
 			token.WriteByte(char)
-		} else if char == '(' || char == ')' || char == ',' {
+		} else if char == '(' || char == ')' || char == ',' || char == '+' || char == '-' || char == '*' || char == '/' {
 			if token.Len() > 0 {
 				tokens = append(tokens, token.String())
 				token.Reset()
@@ -602,41 +685,44 @@ func isAlphaNumeric(char byte) bool {
 }
 
 // convertToRPN converts an infix expression to Reverse Polish Notation (RPN).
-// It takes a slice of strings representing the path tokens -- especially the filter expression --
-// of the infix expression and returns the RPN format of the expression.
-//
-// This RPN format will make it easier to evaluate the expression.
 func convertToRPN(tokens []string) ([]string, error) {
 	var output, stack []string
 
 	for _, token := range tokens {
 		if isOperand(token) {
 			output = append(output, token)
-		} else if isOperator(token) {
-			for len(stack) > 0 && precedence(token) <= precedence(stack[len(stack)-1]) {
-				output = append(output, stack[len(stack)-1])
-				stack = stack[:len(stack)-1]
-			}
+			continue
+		}
+
+		if token == "(" {
 			stack = append(stack, token)
-		} else if token == "(" {
-			stack = append(stack, token)
-		} else if token == ")" {
+			continue
+		}
+
+		if token == ")" {
 			for len(stack) > 0 && stack[len(stack)-1] != "(" {
 				output = append(output, stack[len(stack)-1])
 				stack = stack[:len(stack)-1]
 			}
 			if len(stack) == 0 {
-				return nil, errParenthesisMismatchInPath
+				return nil, fmt.Errorf("parenthesis mismatch: no opening '(' found for ')'")
 			}
 			stack = stack[:len(stack)-1] // Pop "("
-		} else {
-			return nil, fmt.Errorf("unknown token: %s", token)
+			continue
 		}
+
+		// Handling operators and arithmetic operators
+		currentPrecedence := precedence(token)
+		for len(stack) > 0 && precedence(stack[len(stack)-1]) >= currentPrecedence {
+			output = append(output, stack[len(stack)-1])
+			stack = stack[:len(stack)-1]
+		}
+		stack = append(stack, token)
 	}
 
 	for len(stack) > 0 {
 		if stack[len(stack)-1] == "(" {
-			return nil, errParenthesisMismatchInPath
+			return nil, fmt.Errorf("parenthesis mismatch: no closing ')' found for '('")
 		}
 		output = append(output, stack[len(stack)-1])
 		stack = stack[:len(stack)-1]
@@ -646,11 +732,16 @@ func convertToRPN(tokens []string) ([]string, error) {
 }
 
 func isOperand(token string) bool {
-	return !isOperator(token) && token != "(" && token != ")"
+	return !(isOperator(token) || token == "(" || token == ")")
 }
 
 func isOperator(token string) bool {
-	return token == "==" || token == "!=" || token == ">" || token == ">=" || token == "<" || token == "<=" || token == "&&" || token == "||"
+	switch token {
+	case "==", "!=", ">", ">=", "<", "<=", "&&", "||", "+", "-", "*", "/", "%":
+		return true
+	default:
+		return false
+	}
 }
 
 func precedence(operator string) int {
@@ -663,236 +754,11 @@ func precedence(operator string) int {
 		return 3
 	case ">", ">=", "<", "<=":
 		return 4
+	case "+", "-":
+		return 5
+	case "*", "/", "%":
+		return 6
 	default:
 		return 0
 	}
-}
-
-// prototype of eval function
-// TODO: make it work on Node type.
-func eval(rpn []string, ctx interface{}) (interface{}, error) {
-	stack := make([]interface{}, 0)
-
-	for _, token := range rpn {
-		if isOperand(token) {
-			op, err := resolveOperand(token, ctx)
-			if err != nil {
-				return nil, err
-			}
-			stack = append(stack, op)
-		} else if isOperator(token) {
-			if len(stack) < 2 {
-				return nil, fmt.Errorf("insufficient operands for operator: %s", token)
-			}
-
-			rsh := stack[len(stack)-1]
-			lsh := stack[len(stack)-2]
-			stack := stack[:len(stack)-2]
-
-			result, err := applyOperator(token, lsh, rsh)
-			if err != nil {
-				return nil, err
-			}
-
-			stack = append(stack, result)
-		} else {
-			return nil, fmt.Errorf("unknown token: %s", token)
-		}
-	}
-
-	if len(stack) != 1 {
-		return nil, errors.New("invalid expression")
-	}
-
-	return stack[0], nil
-}
-
-// resolveOperand resolves the value of an operand in the RPN expression.
-// It takes a string representing the operand and an interface{} value representing the context.
-//
-// If the operand starts with '@', it is treated as a variable reference and the corresponding value is retrieved from the context.
-// If the operand is enclosed in single quotes, it is treated as a string literal and the quotes are stripped.
-// Otherwise, the operand is parsed as a literal value (e.g., integer, float, boolean).
-//
-// Returns the resolved value of the operand.
-// Returns an error if the variable reference is invalid or the operand cannot be parsed.
-//! Demo version
-func resolveOperand(operand string, ctx interface{}) (interface{}, error) {
-	if strings.HasPrefix(operand, "@") {
-		path := strings.Split(operand[1:], ".")
-		val, err := getValueFromContext(ctx, path)
-		if err != nil {
-			return nil, fmt.Errorf("invalid variable reference: %s", operand)
-		}
-
-		return val, nil
-	}
-
-	if strings.HasPrefix(operand, "'") && strings.HasSuffix(operand, "'") {
-		return operand[1 : len(operand)-1], nil
-	}
-
-	if operand == "true" {
-		return true, nil
-	} else if operand == "false" {
-		return false, nil
-	}
-
-	if i, err := strconv.Atoi(operand); err == nil {
-		return i, nil
-	}
-
-	// if f, err := ParseFloatLiteral([]byte(operand)); err == nil {
-	// 	return f, nil
-	// }
-
-	if f, err := strconv.ParseFloat(operand, 64); err == nil {
-		return f, nil
-	}
-
-	return nil, fmt.Errorf("invalid operand: %s", operand)
-}
-
-// getValueFromContext retrieves the value from the context based on the given path.
-func getValueFromContext(context interface{}, path []string) (interface{}, error) {
-    var value interface{} = context
-    for _, key := range path {
-        if m, ok := value.(map[string]interface{}); ok {
-            value, ok = m[key]
-            if !ok {
-                return nil, fmt.Errorf("key not found: %s", key)
-            }
-        } else {
-            return nil, fmt.Errorf("invalid context type")
-        }
-    }
-    return value, nil
-}
-
-// applyOperator applies the given operator to the operands and returns the result.
-// It takes a string representing the operator and two interface{} values representing the operands.
-//
-// Supported operators:
-// - "==": Equality comparison
-// - "!=": Inequality comparison
-// - ">": Greater than comparison
-// - ">=": Greater than or equal to comparison
-// - "<": Less than comparison
-// - "<=": Less than or equal to comparison
-// - "&&": Logical AND
-// - "||": Logical OR
-//
-// Returns the result of the operator application.
-// Returns an error if the operator is unsupported or the operands are of incompatible types.
-func applyOperator(operator string, left, right interface{}) (interface{}, error) {
-    switch operator {
-    case "==":
-        return applyEqualityOperator(left, right)
-    case "!=":
-        result, err := applyEqualityOperator(left, right)
-        if err != nil {
-            return nil, err
-        }
-        return !result.(bool), nil
-    case ">":
-        return applyComparisonOperator(left, right, '>')
-    case ">=":
-        return applyComparisonOperator(left, right, '>')
-    case "<":
-        return applyComparisonOperator(left, right, '<')
-    case "<=":
-        return applyComparisonOperator(left, right, '<')
-    case "&&":
-        return applyLogicalOperator(left, right, '&')
-    case "||":
-        return applyLogicalOperator(left, right, '|')
-    default:
-        return nil, fmt.Errorf("unsupported operator: %s", operator)
-    }
-}
-
-// applyEqualityOperator applies the equality operator to the operands.
-// TODO: remove reflect. use type assertion instead.
-func applyEqualityOperator(left, right interface{}) (interface{}, error) {
-    leftValue := reflect.ValueOf(left)
-    rightValue := reflect.ValueOf(right)
-
-    if leftValue.Type() != rightValue.Type() {
-        return false, nil
-    }
-
-    switch leftValue.Kind() {
-    case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-        return leftValue.Int() == rightValue.Int(), nil
-    case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-        return leftValue.Uint() == rightValue.Uint(), nil
-    case reflect.Float32, reflect.Float64:
-        return leftValue.Float() == rightValue.Float(), nil
-    case reflect.String:
-        return leftValue.String() == rightValue.String(), nil
-    case reflect.Bool:
-        return leftValue.Bool() == rightValue.Bool(), nil
-    default:
-        return nil, fmt.Errorf("unsupported operand type for equality: %v", leftValue.Type())
-    }
-}
-
-// applyComparisonOperator applies the comparison operator to the operands.
-func applyComparisonOperator(left, right interface{}, operator rune) (interface{}, error) {
-    leftValue := reflect.ValueOf(left)
-    rightValue := reflect.ValueOf(right)
-
-    switch leftValue.Kind() {
-    case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-        switch operator {
-        case '>':
-            return leftValue.Int() > rightValue.Int(), nil
-        case '<':
-            return leftValue.Int() < rightValue.Int(), nil
-        }
-    case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-        switch operator {
-        case '>':
-            return leftValue.Uint() > rightValue.Uint(), nil
-        case '<':
-            return leftValue.Uint() < rightValue.Uint(), nil
-        }
-    case reflect.Float32, reflect.Float64:
-        switch operator {
-        case '>':
-            return leftValue.Float() > rightValue.Float(), nil
-        case '<':
-            return leftValue.Float() < rightValue.Float(), nil
-        }
-    case reflect.String:
-        switch operator {
-        case '>':
-            return leftValue.String() > rightValue.String(), nil
-        case '<':
-            return leftValue.String() < rightValue.String(), nil
-        }
-    default:
-        return nil, fmt.Errorf("unsupported operand type for comparison: %v", leftValue.Type())
-    }
-
-    return nil, fmt.Errorf("unsupported comparison operator: %c", operator)
-}
-
-// applyLogicalOperator applies the logical operator to the operands.
-func applyLogicalOperator(left, right interface{}, operator rune) (interface{}, error) {
-    leftValue := reflect.ValueOf(left)
-    rightValue := reflect.ValueOf(right)
-
-    if leftValue.Kind() != reflect.Bool || rightValue.Kind() != reflect.Bool {
-        return nil, fmt.Errorf("operands must be boolean for logical operator")
-    }
-
-    switch operator {
-    case '&':
-        return leftValue.Bool() && rightValue.Bool(), nil
-    case '|':
-        return leftValue.Bool() || rightValue.Bool(), nil
-    default:
-        return nil, fmt.Errorf("unsupported logical operator: %c", operator)
-    }
 }

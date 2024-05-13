@@ -1,53 +1,64 @@
 package json
 
 import (
-	"reflect"
 	"testing"
 )
 
 func TestParseFilterExpression(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    string
 		expected []string
-		hasError bool
+		isErr    bool
 	}{
 		{
 			name:     "Simple expression",
 			input:    "?(@.name == 'John')",
 			expected: []string{"@.name", "'John'", "=="},
-			hasError: false,
 		},
 		{
 			name:     "Expression with multiple conditions",
 			input:    "?(@.age > 30 && @.city == 'New York')",
 			expected: []string{"@.age", "30", ">", "@.city", "'New York'", "==", "&&"},
-			hasError: false,
 		},
 		{
 			name:     "Expression with parentheses",
 			input:    "?(@.age > 30 && (@.city == 'New York' || @.city == 'London'))",
 			expected: []string{"@.age", "30", ">", "@.city", "'New York'", "==", "@.city", "'London'", "==", "||", "&&"},
-			hasError: false,
+		},
+		{
+			name:     "length",
+			input:    "@.length",
+			expected: []string{"@.length"},
+		},
+		{
+			name:     "length 2",
+			input:    "@.length - 1",
+			expected: []string{"@.length", "1", "-"},
 		},
 		{
 			name:     "Invalid expression - mismatched parentheses",
 			input:    "?(@.age > 30 && (@.city == 'New York')",
 			expected: nil,
-			hasError: true,
+			isErr:    true,
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := parseFilterExpression(tt.input)
-			if tt.hasError {
+			if tt.isErr {
 				if err == nil {
 					t.Errorf("Expected an error, but got nil")
 				}
 			} else {
 				if err != nil {
 					t.Errorf("Unexpected error: %v", err)
+				}
+				if len(result) != len(tt.expected) {
+					t.Errorf("Length mismatch: expected %d, got %d", len(tt.expected), len(result))
 				}
 				if !equalSlices(result, tt.expected) {
 					t.Errorf("Expected %v, but got %v", tt.expected, result)
@@ -58,6 +69,7 @@ func TestParseFilterExpression(t *testing.T) {
 }
 
 func TestTokenizeExpression(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    string
@@ -108,9 +120,25 @@ func TestTokenizeExpression(t *testing.T) {
 			input:    "@.age <= 21",
 			expected: []string{"@.age", "<=", "21"},
 		},
+		{
+			name:     "length",
+			input:    "@.length",
+			expected: []string{"@.length"},
+		},
+		{
+			name:     "length 2",
+			input:    "@.length - 1",
+			expected: []string{"@.length", "-", "1"},
+		},
+		{
+			name:     "length 3 without space",
+			input:    "@.length-1",
+			expected: []string{"@.length", "-", "1"},
+		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := tokenizeExpression(tt.input)
 			if err != nil {
@@ -129,6 +157,7 @@ func TestTokenizeExpression(t *testing.T) {
 }
 
 func TestConvertToRPN(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    []string
@@ -159,9 +188,20 @@ func TestConvertToRPN(t *testing.T) {
 			expected: nil,
 			hasError: true,
 		},
+		{
+			name:     "length",
+			input:    []string{"@.length", "-", "1"},
+			expected: []string{"@.length", "1", "-"},
+		},
+		{
+			name:     "simple math expression",
+			input:    []string{"(", "3", "+", "5", ")", "*", "2"},
+			expected: []string{"3", "5", "+", "2", "*"},
+		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := convertToRPN(tt.input)
 			if tt.hasError {
@@ -190,150 +230,4 @@ func equalSlices(a, b []string) bool {
 		}
 	}
 	return true
-}
-
-func TestResolveOperand(t *testing.T) {
-    tests := []struct {
-        name     string
-        operand  string
-        context  interface{}
-        expected interface{}
-        wantErr  bool
-    }{
-        {
-            name:     "Variable reference",
-            operand:  "@.name",
-            context:  map[string]interface{}{"name": "John"},
-            expected: "John",
-            wantErr:  false,
-        },
-        {
-            name:     "Nested variable reference",
-            operand:  "@.person.age",
-            context:  map[string]interface{}{"person": map[string]interface{}{"age": 30}},
-            expected: 30,
-            wantErr:  false,
-        },
-        {
-            name:     "String literal",
-            operand:  "'hello'",
-            context:  nil,
-            expected: "hello",
-            wantErr:  false,
-        },
-        {
-            name:     "Boolean literal (true)",
-            operand:  "true",
-            context:  nil,
-            expected: true,
-            wantErr:  false,
-        },
-        {
-            name:     "Boolean literal (false)",
-            operand:  "false",
-            context:  nil,
-            expected: false,
-            wantErr:  false,
-        },
-        {
-            name:     "Integer literal",
-            operand:  "42",
-            context:  nil,
-            expected: 42,
-            wantErr:  false,
-        },
-        {
-            name:     "Float literal",
-            operand:  "3.14",
-            context:  nil,
-            expected: 3.14,
-            wantErr:  false,
-        },
-        {
-            name:     "Invalid variable reference",
-            operand:  "@.age",
-            context:  map[string]interface{}{"name": "John"},
-            expected: nil,
-            wantErr:  true,
-        },
-        {
-            name:     "Invalid operand",
-            operand:  "invalid",
-            context:  nil,
-            expected: nil,
-            wantErr:  true,
-        },
-    }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            result, err := resolveOperand(tt.operand, tt.context)
-            if (err != nil) != tt.wantErr {
-                t.Errorf("resolveOperand() error = %v, wantErr %v", err, tt.wantErr)
-                return
-            }
-            if !reflect.DeepEqual(result, tt.expected) {
-                t.Errorf("resolveOperand() result = %v, expected %v", result, tt.expected)
-            }
-        })
-    }
-}
-
-func TestGetValueFromContext(t *testing.T) {
-    tests := []struct {
-        name    string
-        context interface{}
-        path    []string
-        want    interface{}
-        wantErr bool
-    }{
-        {
-            name:    "Simple key",
-            context: map[string]interface{}{"name": "John"},
-            path:    []string{"name"},
-            want:    "John",
-            wantErr: false,
-        },
-        {
-            name:    "Nested keys",
-            context: map[string]interface{}{"person": map[string]interface{}{"age": 30}},
-            path:    []string{"person", "age"},
-            want:    30,
-            wantErr: false,
-        },
-        {
-            name:    "Missing key",
-            context: map[string]interface{}{"name": "John"},
-            path:    []string{"age"},
-            want:    nil,
-            wantErr: true,
-        },
-        {
-            name:    "Invalid context type",
-            context: "invalid",
-            path:    []string{"name"},
-            want:    nil,
-            wantErr: true,
-        },
-        {
-            name:    "Empty path",
-            context: map[string]interface{}{"name": "John"},
-            path:    []string{},
-            want:    map[string]interface{}{"name": "John"},
-            wantErr: false,
-        },
-    }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            got, err := getValueFromContext(tt.context, tt.path)
-            if (err != nil) != tt.wantErr {
-                t.Errorf("getValueFromContext() error = %v, wantErr %v", err, tt.wantErr)
-                return
-            }
-            if !reflect.DeepEqual(got, tt.want) {
-                t.Errorf("getValueFromContext() got = %v, want %v", got, tt.want)
-            }
-        })
-    }
 }
