@@ -141,74 +141,101 @@ func processWildcard(nodes []*Node) []*Node {
 // It retrieves the child nodes of each node in the given slice that match any of the specified keys
 func processKeyUnion(cmd string, nodes []*Node) ([]*Node, error) {
 	buf := newBuffer([]byte(cmd))
-	keys := make([]string, 0)
-
-	for {
-		c, err := buf.first()
-		if err != nil {
-			return nil, err
-		}
-
-		if c == comma {
-			return nil, errUnexpectedChar
-		}
-
-		from := buf.index
-		err = buf.pathToken()
-		if err != nil && err != io.EOF {
-			return nil, err
-		}
-
-		key := string(buf.data[from:buf.index])
-		if len(key) > 2 && key[0] == singleQuote && key[len(key)-1] == singleQuote {
-			key = key[1 : len(key)-1]
-		}
-
-		keys = append(keys, key)
-		c, err = buf.first()
-		if err != nil {
-			err = nil
-			break
-		}
-
-		if c != comma {
-			return nil, errUnexpectedChar
-		}
-
-		err = buf.step()
-		if err != nil {
-			return nil, err
-		}
+	keys, err := extractKeys(buf)
+	if err != nil {
+		return nil, err
 	}
 
 	var result []*Node
 	for _, node := range nodes {
 		if node.IsArray() {
-			for _, key := range keys {
-				if key == "length" {
-					value, err := functions["length"](node)
-					if err != nil {
-						return nil, err
-					}
-					result = append(result, value)
-				} else {
-					index, err := strconv.Atoi(key)
-					if err == nil {
-						if index < 0 {
-							index = node.Size() + index
-						}
-						if value, ok := node.next[strconv.Itoa(index)]; ok {
-							result = append(result, value)
-						}
-					}
-				}
+			result, err = processArrayKeys(node, keys, result)
+			if err != nil {
+				return nil, err
 			}
 		} else if node.IsObject() {
-			for _, key := range keys {
-				if value, ok := node.next[key]; ok {
+			result, err = processObjectKeys(node, keys, result)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return result, nil
+}
+
+func extractKeys(buf *buffer) ([]string, error) {
+	keys := make([]string, 0)
+
+	for {
+		key, err := extractKey(buf)
+		if err != nil {
+			if err == io.EOF {
+				return keys, nil
+			}
+			return nil, err
+		}
+		keys = append(keys, key)
+
+		if err := expectComma(buf); err != nil {
+			return keys, nil
+		}
+	}
+}
+
+func extractKey(buf *buffer) (string, error) {
+	from := buf.index
+	err := buf.pathToken()
+	if err != nil {
+		return "", err
+	}
+
+	key := string(buf.data[from:buf.index])
+	if len(key) > 2 && key[0] == singleQuote && key[len(key)-1] == singleQuote {
+		key = key[1 : len(key)-1]
+	}
+	return key, nil
+}
+
+func expectComma(buf *buffer) error {
+	c, err := buf.first()
+	if err != nil {
+		return err
+	}
+	if c != comma {
+		return errUnexpectedChar
+	}
+	return buf.step()
+}
+
+func processArrayKeys(node *Node, keys []string, result []*Node) ([]*Node, error) {
+	for _, key := range keys {
+		switch key {
+		case "length":
+			value, err := functions["length"](node)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, value)
+		default:
+			index, err := strconv.Atoi(key)
+			if err == nil {
+				if index < 0 {
+					index = node.Size() + index
+				}
+
+				if value, ok := node.next[strconv.Itoa(index)]; ok {
 					result = append(result, value)
 				}
 			}
+		}
+	}
+	return result, nil
+}
+
+func processObjectKeys(node *Node, keys []string, result []*Node) ([]*Node, error) {
+	for _, key := range keys {
+		if value, ok := node.next[key]; ok {
+			result = append(result, value)
 		}
 	}
 	return result, nil
