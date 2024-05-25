@@ -105,7 +105,6 @@ func processCommand(cmd string, nodes []*Node) ([]*Node, error) {
 	case strings.HasPrefix(cmd, "?(") && strings.HasSuffix(cmd, ")"):
 		return processFilter(cmd, nodes)
 	default:
-		// return processKeyUnion(cmd, nodes), nil
 		res, err := processKeyUnion(cmd, nodes)
 		if err != nil {
 			return nil, err
@@ -713,7 +712,8 @@ func isAlphaNumeric(char byte) bool {
 
 // convertToRPN converts an infix expression to Reverse Polish Notation (RPN).
 func convertToRPN(tokens []string) ([]string, error) {
-	var output, stack []string
+	var output []string
+	stack := NewStack()
 
 	for _, token := range tokens {
 		if isOperand(token) {
@@ -722,37 +722,34 @@ func convertToRPN(tokens []string) ([]string, error) {
 		}
 
 		if token == "(" {
-			stack = append(stack, token)
+			stack.Push(token)
 			continue
 		}
 
 		if token == ")" {
-			for len(stack) > 0 && stack[len(stack)-1] != "(" {
-				output = append(output, stack[len(stack)-1])
-				stack = stack[:len(stack)-1]
+			for !stack.IsEmpty() && stack.Peek() != "(" {
+				output = append(output, stack.Pop())
 			}
-			if len(stack) == 0 {
+			if stack.IsEmpty() {
 				return nil, fmt.Errorf("parenthesis mismatch: no opening '(' found for ')'")
 			}
-			stack = stack[:len(stack)-1] // Pop "("
+			stack.Pop() // Pop "("
 			continue
 		}
 
 		// Handling operators and arithmetic operators
 		currentPrecedence := precedence(token)
-		for len(stack) > 0 && precedence(stack[len(stack)-1]) >= currentPrecedence {
-			output = append(output, stack[len(stack)-1])
-			stack = stack[:len(stack)-1]
+		for !stack.IsEmpty() && precedence(stack.Peek()) >= currentPrecedence {
+			output = append(output, stack.Pop())
 		}
-		stack = append(stack, token)
+		stack.Push(token)
 	}
 
-	for len(stack) > 0 {
-		if stack[len(stack)-1] == "(" {
+	for !stack.IsEmpty() {
+		if stack.Peek() == "(" {
 			return nil, fmt.Errorf("parenthesis mismatch: no closing ')' found for '('")
 		}
-		output = append(output, stack[len(stack)-1])
-		stack = stack[:len(stack)-1]
+		output = append(output, stack.Pop())
 	}
 
 	return output, nil

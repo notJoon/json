@@ -1310,9 +1310,6 @@ func TestNode_Keys(t *testing.T) {
 	if value[0] != "foo" || value[1] != "bar" {
 		t.Errorf("Keys() must be foo, bar. got: %v", value)
 	}
-	if value[1] == "foo" || value[0] == "bar" {
-		t.Errorf("Keys() must be foo, bar. got: %v", value)
-	}
 	if (*Node)(nil).Keys() != nil {
 		t.Errorf("Keys() must be nil")
 	}
