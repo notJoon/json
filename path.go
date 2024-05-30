@@ -70,22 +70,16 @@ func applyPath(node *Node, cmds []string) ([]*Node, error) {
 	result := make([]*Node, 0)
 
 	for i, cmd := range cmds {
-		if i == 0 && cmd == "$" { // root
+		if i == 0 && (cmd == "$" || cmd == "@") { // root or current
 			result = append(result, node)
 			continue
 		}
 
-		if i == 0 && cmd == "@" { // current
-			result = append(result, node)
-			continue
-		}
-
-		result, err := processCommand(cmd, result)
+		var err error
+		result, err = processCommand(cmd, result)
 		if err != nil {
 			return nil, err
 		}
-
-		return result, nil
 	}
 
 	return result, nil

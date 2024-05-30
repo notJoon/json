@@ -173,6 +173,81 @@ func TestParseJSONPath(t *testing.T) {
 	}
 }
 
+func TestApplyPath(t *testing.T) {
+	node1 := NumberNode("", 1)
+	node2 := NumberNode("", 2)
+	cpy := func(n Node) *Node {
+		return &n
+	}
+	array := ArrayNode("", []*Node{cpy(*node1), cpy(*node2)})
+
+	type pathData struct {
+		node *Node
+		path []string
+	}
+	tests := []struct {
+		name     string
+		args     pathData
+		expected []*Node
+		isErr    bool
+	}{
+		{
+			name: "root",
+			args: pathData{
+				node: node1,
+				path: []string{"$"},
+			},
+			expected: []*Node{node1},
+		},
+		{
+			name: "second",
+			args: pathData{
+				node: array,
+				path: []string{"$", "1"},
+			},
+			expected: []*Node{array.next["1"]},
+		},
+		{
+			name: "object",
+			args: pathData{
+				node: ObjectNode("", map[string]*Node{
+					"key1": NumberNode("", 42),
+					"key2": NumberNode("", 43),
+				}),
+				path: []string{"$", "key1"},
+			},
+			expected: []*Node{NumberNode("", 42)},
+		},
+		{
+			name: "wildcard on object",
+			args: pathData{
+				node: ObjectNode("", map[string]*Node{
+					"key1": NumberNode("", 42),
+					"key2": NumberNode("", 43),
+				}),
+				path: []string{"$", "*"},
+			},
+			expected: []*Node{NumberNode("", 42), NumberNode("", 43)},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := applyPath(tt.args.node, tt.args.path)
+			if (err != nil) != tt.isErr {
+				t.Errorf("expected error %v, got %v", tt.isErr, err)
+			}
+
+			for i, v := range result {
+				if !v.Equals(tt.expected[i]) {
+					t.Errorf("expected %v, got %v", tt.expected[i], v)
+				}
+			}
+		})
+	}
+}
+
 func sliceEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

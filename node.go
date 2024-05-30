@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -1482,23 +1483,33 @@ func Must(root *Node, expect error) *Node {
 	return root
 }
 
-func (n *Node) getSortedChildren() []*Node {
+func (n *Node) getSortedChildren() (result []*Node) {
 	if n == nil {
 		return nil
 	}
 
-	var result []*Node
+	size := len(n.next)
 	if n.IsObject() {
+		result = make([]*Node, size)
 		keys := n.Keys()
-		result = make([]*Node, len(keys))
+		sort.Slice(keys, func(i, j int) bool {
+			return keys[i] < keys[j]
+		})
+
 		for i, key := range keys {
 			result[i] = n.next[key]
 		}
 	} else if n.IsArray() {
-		result = make([]*Node, len(n.next))
-		for _, child := range n.next {
-			result[*child.index] = child
+		result = make([]*Node, size)
+		for _, elem := range n.next {
+			result[*elem.index] = elem
 		}
 	}
+
 	return result
+}
+
+func (n *Node) Equals(other *Node) bool {
+	// Compare the values of n and other
+	return n.value == other.value && n.nodeType == other.nodeType
 }
