@@ -645,7 +645,7 @@ func tokenizeExpression(expr string) ([]string, error) {
 	for i := 0; i < len(expr); i++ {
 		char := expr[i]
 
-		if char == '\'' {
+		if char == singleQuote {
 			if inQuotes {
 				token.WriteByte(char)
 				tokens = append(tokens, token.String())
@@ -661,26 +661,26 @@ func tokenizeExpression(expr string) ([]string, error) {
 			}
 		} else if inQuotes {
 			token.WriteByte(char)
-		} else if char == '(' || char == ')' || char == ',' || char == '+' || char == '-' || char == '*' || char == '/' {
+		} else if char == parenOpen || char == parenClose || char == comma || char == plus || char == minus || char == aesterisk || char == slash {
 			if token.Len() > 0 {
 				tokens = append(tokens, token.String())
 				token.Reset()
 			}
 			tokens = append(tokens, string(char))
-		} else if char == ' ' {
+		} else if char == whiteSpace {
 			if token.Len() > 0 {
 				tokens = append(tokens, token.String())
 				token.Reset()
 			}
-		} else if char == '@' {
+		} else if char == atSign {
 			if token.Len() > 0 {
 				tokens = append(tokens, token.String())
 				token.Reset()
 			}
 			token.WriteByte(char)
-			if i+1 < len(expr) && expr[i+1] == '.' {
+			if i+1 < len(expr) && expr[i+1] == dot {
 				i++
-				for i < len(expr) && (isAlphaNumeric(expr[i]) || expr[i] == '_') {
+				for i < len(expr) && (isAlphaNumeric(expr[i]) || expr[i] == underScore) {
 					token.WriteByte(expr[i])
 					i++
 				}
@@ -700,7 +700,7 @@ func tokenizeExpression(expr string) ([]string, error) {
 
 func isAlphaNumeric(char byte) bool {
 	ch := rune(char)
-	return unicode.IsLetter(ch) || unicode.IsDigit(ch) || ch == '_'
+	return unicode.IsLetter(ch) || unicode.IsDigit(ch) || ch == underScore
 }
 
 // convertToRPN converts an infix expression to Reverse Polish Notation (RPN).

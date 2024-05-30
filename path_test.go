@@ -277,6 +277,102 @@ func TestApplyPath(t *testing.T) {
 				NumberNode("", 4),
 			},
 		},
+		{
+			name: "basic recursive descent path",
+			args: pathData{
+				node: ObjectNode("", map[string]*Node{
+					"key1": NumberNode("", 42),
+					"key2": NumberNode("", 43),
+				}),
+				path: []string{"$", ".."},
+			},
+			expected: []*Node{
+				ObjectNode("", map[string]*Node{
+					"key1": NumberNode("", 42),
+					"key2": NumberNode("", 43),
+				}),
+				NumberNode("", 42),
+				NumberNode("", 43),
+			},
+		},
+		{
+			// JSON data: https://stackoverflow.com/questions/57073128/jsonpath-restrict-id-operator-to-avoid-traversing-object-hierarchy
+			name: "recursive descent with specific key",
+			args: pathData{
+				node: ArrayNode("", []*Node{
+					ObjectNode("", map[string]*Node{
+						"id": NumberNode("id", 1),
+						"images": ArrayNode("images", []*Node{
+							ObjectNode("", map[string]*Node{
+								"id": NumberNode("id", 1),
+								"url": StringNode("url", "http://url1.jpg"),
+							}),
+							ObjectNode("", map[string]*Node{
+								"id": NumberNode("id", 2),
+								"url": StringNode("url", "http://url2.jpg"),
+							}),
+						}),
+					}),
+					ObjectNode("", map[string]*Node{
+						"id": NumberNode("id", 2),
+						"images": ArrayNode("images", []*Node{
+							ObjectNode("", map[string]*Node{
+								"id": NumberNode("id", 3),
+								"url": StringNode("url", "http://url3.jpg"),
+							}),
+							ObjectNode("", map[string]*Node{
+								"id": NumberNode("id", 4),
+								"url": StringNode("url", "http://url4.jpg"),
+							}),
+						}),
+					}),
+				}),
+				path: []string{"$", "..", "id"},
+			},
+			expected: []*Node{
+				NumberNode("id", 1),
+				NumberNode("id", 2),
+				NumberNode("id", 1),
+				NumberNode("id", 2),
+				NumberNode("id", 3),
+				NumberNode("id", 4),
+				NumberNode("id", 3),
+				NumberNode("id", 5),
+				NumberNode("id", 6),
+			},
+		},
+		// TODO: FIX UNION PATH HANDLER
+		// {
+		// 	name: "union path",
+		// 	args: pathData{
+		// 		node: ObjectNode("", map[string]*Node{
+		// 			"firstName": StringNode("firstName", "John"),
+		// 			"lastName":  StringNode("lastName", "doe"),
+		// 			"age":       NumberNode("age", 26),
+		// 			"address": ObjectNode("address", map[string]*Node{
+		// 				"streetAddress": StringNode("streetAddress", "naist street"),
+		// 				"city":          StringNode("city", "Nara"),
+		// 				"postalCode":    StringNode("postalCode", "630-0192"),
+		// 			}),
+		// 			"phoneNumbers": ArrayNode("phoneNumbers", []*Node{
+		// 				ObjectNode("", map[string]*Node{
+		// 					"type":   StringNode("type", "iPhone"),
+		// 					"number": StringNode("number", "0123-4567-8888"),
+		// 				}),
+		// 				ObjectNode("", map[string]*Node{
+		// 					"type":   StringNode("type", "home"),
+		// 					"number": StringNode("number", "0123-4567-8910"),
+		// 				}),
+		// 			}),
+		// 		}),
+		// 		// $..['firstName','city']
+		// 		path: []string{"$", "..", "[", "firstName", ",", "city", "]"},
+		// 	},
+		// 	expected: []*Node{
+		// 		StringNode("firstName", "John"),
+		// 		StringNode("city", "Nara"),
+		// 	},
+		// },
 	}
 
 	for _, tt := range tests {
@@ -289,7 +385,7 @@ func TestApplyPath(t *testing.T) {
 
 			for i, v := range result {
 				if !v.Equals(tt.expected[i]) {
-					t.Errorf("expected %v, got %v", tt.expected[i], v)
+					t.Errorf("expected %v, got %v at index %v", tt.expected[i], v, i)
 				}
 			}
 		})
