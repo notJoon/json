@@ -19,7 +19,6 @@ var (
 	errInvalidSliceFromValue     = errors.New("invalid slice from value")
 	errInvalidSliceToValue       = errors.New("invalid slice to value")
 	errInvalidSliceStepValue     = errors.New("invalid slice step value")
-	errParenthesisMismatchInPath = errors.New("parenthesis mismatch in path")
 )
 
 // Path returns the nodes that match the given JSON path.

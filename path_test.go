@@ -229,6 +229,54 @@ func TestApplyPath(t *testing.T) {
 			},
 			expected: []*Node{NumberNode("", 42), NumberNode("", 43)},
 		},
+		{
+			name: "array slice",
+			args: pathData{
+				node: ArrayNode("", []*Node{
+					NumberNode("", 1),
+					NumberNode("", 2),
+					NumberNode("", 3),
+					NumberNode("", 4),
+				}),
+				path: []string{"$", "1:3"},
+			},
+			expected: []*Node{NumberNode("", 2), NumberNode("", 3)},
+		},
+		{
+			name: "array slice with step",
+			args: pathData{
+				node: ArrayNode("", []*Node{
+					NumberNode("", 1),
+					NumberNode("", 2),
+					NumberNode("", 3),
+					NumberNode("", 4),
+					NumberNode("", 5),
+				}),
+				path: []string{"$", "0:5:2"},
+			},
+			expected: []*Node{
+				NumberNode("", 1),
+				NumberNode("", 3),
+				NumberNode("", 5),
+			},
+		},
+		{
+			name: "array slice with negative index and step",
+			args: pathData{
+				node: ArrayNode("", []*Node{
+					NumberNode("", 1),
+					NumberNode("", 2),
+					NumberNode("", 3),
+					NumberNode("", 4),
+					NumberNode("", 5),
+				}),
+				path: []string{"$", "-3:-1:1"},
+			},
+			expected: []*Node{
+				NumberNode("", 3),
+				NumberNode("", 4),
+			},
+		},
 	}
 
 	for _, tt := range tests {
