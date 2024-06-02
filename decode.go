@@ -168,7 +168,6 @@ func Unmarshal(data []byte) (*Node, error) {
 				if current, err = createNode(current, buf, Array, useKey()); err != nil {
 					return nil, err
 				}
-
 				buf.state = AR
 
 			case cm: // ,

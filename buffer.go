@@ -237,7 +237,10 @@ func (b *buffer) pathToken() error {
 		c := b.data[b.index]
 
 		switch {
-		case c == doubleQuote || c == singleQuote:
+		case c == singleQuote:
+			fallthrough
+
+		case c == doubleQuote:
 			inToken = true
 			if err := b.step(); err != nil {
 				return errors.New("error stepping through buffer")

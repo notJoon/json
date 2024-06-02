@@ -159,7 +159,10 @@ func TestParseJSONPath(t *testing.T) {
 		{path: "$['root'].*.['element']", expected: []string{"$", "root", "*", "element"}},
 		{path: "$.phoneNumbers[*].type", expected: []string{"$", "phoneNumbers", "*", "type"}},
 		{path: "$.store.book[?(@.price < 10)].title", expected: []string{"$", "store", "book", "?(@.price < 10)", "title"}},
+		{path: "$..['firstName','city']", expected: []string{"$", "..", "firstName", "city"}},
+		{path: "$.store.book[?('title','author')]", expected: []string{"$", "store", "book", "?('title','author')"}},
 	}
+
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.path, func(t *testing.T) {
@@ -341,38 +344,6 @@ func TestApplyPath(t *testing.T) {
 				NumberNode("id", 6),
 			},
 		},
-		// TODO: FIX UNION PATH HANDLER
-		// {
-		// 	name: "union path",
-		// 	args: pathData{
-		// 		node: ObjectNode("", map[string]*Node{
-		// 			"firstName": StringNode("firstName", "John"),
-		// 			"lastName":  StringNode("lastName", "doe"),
-		// 			"age":       NumberNode("age", 26),
-		// 			"address": ObjectNode("address", map[string]*Node{
-		// 				"streetAddress": StringNode("streetAddress", "naist street"),
-		// 				"city":          StringNode("city", "Nara"),
-		// 				"postalCode":    StringNode("postalCode", "630-0192"),
-		// 			}),
-		// 			"phoneNumbers": ArrayNode("phoneNumbers", []*Node{
-		// 				ObjectNode("", map[string]*Node{
-		// 					"type":   StringNode("type", "iPhone"),
-		// 					"number": StringNode("number", "0123-4567-8888"),
-		// 				}),
-		// 				ObjectNode("", map[string]*Node{
-		// 					"type":   StringNode("type", "home"),
-		// 					"number": StringNode("number", "0123-4567-8910"),
-		// 				}),
-		// 			}),
-		// 		}),
-		// 		// $..['firstName','city']
-		// 		path: []string{"$", "..", "[", "firstName", ",", "city", "]"},
-		// 	},
-		// 	expected: []*Node{
-		// 		StringNode("firstName", "John"),
-		// 		StringNode("city", "Nara"),
-		// 	},
-		// },
 	}
 
 	for _, tt := range tests {
@@ -385,7 +356,7 @@ func TestApplyPath(t *testing.T) {
 
 			for i, v := range result {
 				if !v.Equals(tt.expected[i]) {
-					t.Errorf("expected %v, got %v at index %v", tt.expected[i], v, i)
+					t.Errorf("expected %v, got %v", tt.expected[i].value, v.value)
 				}
 			}
 		})

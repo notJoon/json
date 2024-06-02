@@ -11,6 +11,7 @@ import (
 )
 
 var (
+	errEmptyRequest  		     = errors.New("empty request")
 	errUnexpectedEOF             = errors.New("unexpected EOF")
 	errUnexpectedChar            = errors.New("unexpected character")
 	errStringNotClosed           = errors.New("string not closed")
@@ -405,18 +406,28 @@ func processSingleQuote(buf *buffer, result []string, start int) ([]string, erro
 
 	stop := buf.index
 
+	value := string(buf.data[start:stop])
+
 	b, err := buf.next()
 	if err != nil {
+		if err == io.EOF {
+			result = append(result, value)
+			return result, nil
+		}
 		return nil, errUnexpectedEOF
 	}
 
-	if b != bracketClose {
-		return nil, errBracketNotClosed
+	if b == bracketClose {
+		result = append(result, value)
+		return result, nil
 	}
 
-	result = append(result, string(buf.data[start:stop]))
+	if b == comma {
+		result = append(result, value)
+		return processBracketOpen(buf, result)
+	}
 
-	return result, nil
+	return nil, errBracketNotClosed
 }
 
 // processWithoutSingleQuote handles the processing when a character other than
