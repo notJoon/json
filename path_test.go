@@ -3,6 +3,7 @@ package json
 import (
 	"strings"
 	"testing"
+	"unicode"
 )
 
 func TestJSONPath(t *testing.T) {
@@ -381,4 +382,146 @@ func fullPath(array []*Node) string {
 
 func sliceString(array []string) string {
 	return "[" + strings.Join(array, ", ") + "]"
+}
+
+func TestJsonPath(t *testing.T) {
+	data := []byte(`{
+		"store": {
+			"book": [
+			{
+				"category": "reference",
+				"author": "Nigel Rees",
+				"title": "Sayings of the Century",
+				"price": 8.95
+			},
+			{
+				"category": "fiction",
+				"author": "Herman Melville",
+				"title": "Moby Dick",
+				"isbn": "0-553-21311-3",
+				"price": 8.99
+			},
+			{
+				"category": "fiction",
+				"author": "J.R.R. Tolkien",
+				"title": "The Lord of the Rings",
+				"isbn": "0-395-19395-8",
+				"price": 22.99
+			}
+			],
+			"bicycle": {
+			"color": "red",
+			"price": 19.95
+			}
+		},
+		"expensive": 10
+	}`)
+
+	testCases := []struct {
+		path     string
+		expected []string
+	}{
+		{"$.store.*", []string{
+			`{
+   "color": "red",
+   "price": 19.95
+}`,
+			`[
+  {
+   "category": "reference",
+   "author": "Nigel Rees",
+   "title": "Sayings of the Century",
+   "price": 8.95
+  },
+  {
+   "category": "fiction",
+   "author": "Herman Melville",
+   "title": "Moby Dick",
+   "isbn": "0-553-21311-3",
+   "price": 8.99
+  },
+  {
+   "category": "fiction",
+   "author": "J.R.R. Tolkien",
+   "title": "The Lord of the Rings",
+   "isbn": "0-395-19395-8",
+   "price": 22.99
+  }
+]`,
+		}},
+		{"$.store.bicycle.color", []string{`"red"`}},
+		{"$.store.book[*]", []string{
+			`{
+   "category": "reference",
+   "author": "Nigel Rees",
+   "title": "Sayings of the Century",
+   "price": 8.95
+}`,
+			`{
+   "category": "fiction",
+   "author": "Herman Melville",
+   "title": "Moby Dick",
+   "isbn": "0-553-21311-3",
+   "price": 8.99
+}`,
+			`{
+   "category": "fiction",
+   "author": "J.R.R. Tolkien",
+   "title": "The Lord of the Rings",
+   "isbn": "0-395-19395-8",
+   "price": 22.99
+}`,
+		}},
+		{"$.store.book[0].title", []string{`"Sayings of the Century"`}},
+		{"$.store..price", []string{`19.95`, `8.95`, `8.99`, `22.99`}},
+		{"$..price", []string{`19.95`, `8.95`, `8.99`, `22.99`}},
+		{"$..book[*].title", []string{`"Sayings of the Century"`, `"Moby Dick"`, `"The Lord of the Rings"`}},
+		{"$..book[0]", []string{
+			`{
+   "category": "reference",
+   "author": "Nigel Rees",
+   "title": "Sayings of the Century",
+   "price": 8.95
+}`,
+		}},
+	}
+
+	for _, tc := range testCases {
+		result, err := Path(data, tc.path)
+		if err != nil {
+			t.Errorf("Unexpected error for path %q: %v", tc.path, err)
+			continue
+		}
+
+		if len(result) != len(tc.expected) {
+			t.Errorf("Path %q: expected %d results, got %d", tc.path, len(tc.expected), len(result))
+			continue
+		}
+
+		for i, node := range result {
+			expectedNorm := normalizeJSON(tc.expected[i])
+			resultNorm := normalizeJSON(node.String())
+			if resultNorm != expectedNorm {
+				t.Errorf("Path %q: expected result %q, got %q", tc.path, expectedNorm, resultNorm)
+			}
+		}
+	}
+}
+
+// normalizeJSON removes all whitespace outside of quoted text.
+func normalizeJSON(s string) string {
+	var sb strings.Builder
+	inQuotes := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '"' {
+			inQuotes = !inQuotes
+			sb.WriteByte(c)
+		} else if inQuotes {
+			sb.WriteByte(c)
+		} else if !inQuotes && !unicode.IsSpace(rune(c)) {
+			sb.WriteByte(c)
+		}
+	}
+	return sb.String()
 }

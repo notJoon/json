@@ -11,7 +11,6 @@ import (
 )
 
 var (
-	errEmptyRequest  		     = errors.New("empty request")
 	errUnexpectedEOF             = errors.New("unexpected EOF")
 	errUnexpectedChar            = errors.New("unexpected character")
 	errStringNotClosed           = errors.New("string not closed")
@@ -50,20 +49,7 @@ func Path(data []byte, path string) ([]*Node, error) {
 		return nil, fmt.Errorf("failed to unmarshal JSON: %v", err)
 	}
 
-	result := make([]*Node, 0)
-	for i, cmd := range commands {
-		if i == 0 && cmd == "$" {
-			result = append(result, root)
-			continue
-		}
-
-		result, err = processCommand(cmd, result)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return result, nil
+	return applyPath(root, commands)
 }
 
 func applyPath(node *Node, cmds []string) ([]*Node, error) {
@@ -203,12 +189,6 @@ func expectComma(buf *buffer) error {
 func processArrayKeys(node *Node, keys []string, result []*Node) ([]*Node, error) {
 	for _, key := range keys {
 		switch key {
-		case "length":
-			value, err := functions["length"](node)
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, value)
 		default:
 			index, err := strconv.Atoi(key)
 			if err == nil {
