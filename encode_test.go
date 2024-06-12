@@ -256,9 +256,6 @@ func stringPtr(s string) *string {
 	return &s
 }
 
-// BenchmarkGoStdMarshal-8   	 7871595	       127.7 ns/op	      56 B/op	       2 allocs/op
-// BenchmarkMarshal-8        	 3110293	       388.4 ns/op	     704 B/op	      12 allocs/op
-
 type benchMarshal struct {
 	Name  string `json:"name"`
 	Value int    `json:"value"`

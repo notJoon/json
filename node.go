@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -138,6 +139,17 @@ func (n *Node) UniqueKeys() []string {
 	}
 
 	return collectKeys(n)
+}
+
+func (n *Node) Keys() []string {
+	if n == nil {
+		return nil
+	}
+	result := make([]string, 0, len(n.next))
+	for key := range n.next {
+		result = append(result, key)
+	}
+	return result
 }
 
 // TODO: implement the EachKey method. this takes a callback function and executes it for each key in the object node.
@@ -555,7 +567,7 @@ func ArrayNode(key string, value []*Node) *Node {
 		curr.value = value
 
 		for i, v := range value {
-			var idx = i
+			idx := i
 			curr.next[strconv.Itoa(i)] = v
 
 			v.prev = curr
@@ -725,62 +737,62 @@ func (n *Node) GetNumeric() (float64, error) {
 
 // GetInts traverses the current JSON nodes using DFS and collects all integer values.
 func (n *Node) GetInts() []int {
-    var stack []*Node
-    var result []int
+	var stack []*Node
+	var result []int
 
-    stack = append(stack, n) // add starting node to stack
+	stack = append(stack, n) // add starting node to stack
 
-    for len(stack) > 0 {
-        var currentNode *Node
-        currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1] // 스택에서 노드를 팝
+	for len(stack) > 0 {
+		var currentNode *Node
+		currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1] // 스택에서 노드를 팝
 
-        if currentNode == nil {
-            continue
-        }
+		if currentNode == nil {
+			continue
+		}
 
-        if currentNode.IsNumber() {
-            numVal, err := currentNode.GetNumeric()
-            if err == nil && math.Mod(numVal, 1) == 0 { // no decimal part
-                result = append(result, int(numVal))
-            }
-        }
+		if currentNode.IsNumber() {
+			numVal, err := currentNode.GetNumeric()
+			if err == nil && math.Mod(numVal, 1) == 0 { // no decimal part
+				result = append(result, int(numVal))
+			}
+		}
 
-        for _, childNode := range currentNode.next { // append child nodes to stack
-            stack = append(stack, childNode)
-        }
-    }
+		for _, childNode := range currentNode.next { // append child nodes to stack
+			stack = append(stack, childNode)
+		}
+	}
 
-    return result
+	return result
 }
 
 // GetFloats traverses the current JSON nodes using DFS and collects all float values.
 func (n *Node) GetFloats() []float64 {
-    var stack []*Node
-    var result []float64
+	var stack []*Node
+	var result []float64
 
-    stack = append(stack, n) // add starting node to stack
+	stack = append(stack, n) // add starting node to stack
 
-    for len(stack) > 0 {
-        var currentNode *Node
-        currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1]
+	for len(stack) > 0 {
+		var currentNode *Node
+		currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1]
 
-        if currentNode == nil {
-            continue
-        }
+		if currentNode == nil {
+			continue
+		}
 
-        if currentNode.IsNumber() {
-            numVal, err := currentNode.GetNumeric()
-            if err == nil && math.Mod(numVal, 1) != 0 { // has decimal part
-                result = append(result, numVal)
-            }
-        }
+		if currentNode.IsNumber() {
+			numVal, err := currentNode.GetNumeric()
+			if err == nil && math.Mod(numVal, 1) != 0 { // has decimal part
+				result = append(result, numVal)
+			}
+		}
 
-        for _, childNode := range currentNode.next { // append child nodes to stack
-            stack = append(stack, childNode)
-        }
-    }
+		for _, childNode := range currentNode.next { // append child nodes to stack
+			stack = append(stack, childNode)
+		}
+	}
 
-    return result
+	return result
 }
 
 // MustNumeric returns the numeric (int/float) value if current node is number type.
@@ -892,30 +904,30 @@ func (n *Node) MustString() string {
 //	}
 func (n *Node) GetBools() []bool {
 	var stack []*Node
-    var result []bool
+	var result []bool
 
-    stack = append(stack, n)
+	stack = append(stack, n)
 
-    for len(stack) > 0 {
-        var currentNode *Node
-        currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1]
+	for len(stack) > 0 {
+		var currentNode *Node
+		currentNode, stack = stack[len(stack)-1], stack[:len(stack)-1]
 
-        if currentNode == nil {
-            continue
-        }
+		if currentNode == nil {
+			continue
+		}
 
-        if currentNode.nodeType == Boolean {
-            if boolVal, err := currentNode.GetBool(); err == nil {
-                result = append(result, boolVal)
-            }
-        }
+		if currentNode.nodeType == Boolean {
+			if boolVal, err := currentNode.GetBool(); err == nil {
+				result = append(result, boolVal)
+			}
+		}
 
-        for _, childNode := range currentNode.next {
-            stack = append(stack, childNode)
-        }
-    }
+		for _, childNode := range currentNode.next {
+			stack = append(stack, childNode)
+		}
+	}
 
-    return result
+	return result
 }
 
 // GetBool returns the boolean value if current node is boolean type.
@@ -1469,4 +1481,35 @@ func Must(root *Node, expect error) *Node {
 	}
 
 	return root
+}
+
+func (n *Node) getSortedChildren() (result []*Node) {
+	if n == nil {
+		return nil
+	}
+
+	size := len(n.next)
+	if n.IsObject() {
+		result = make([]*Node, size)
+		keys := n.Keys()
+		sort.Slice(keys, func(i, j int) bool {
+			return keys[i] < keys[j]
+		})
+
+		for i, key := range keys {
+			result[i] = n.next[key]
+		}
+	} else if n.IsArray() {
+		result = make([]*Node, size)
+		for _, elem := range n.next {
+			result[*elem.index] = elem
+		}
+	}
+
+	return result
+}
+
+func (n *Node) Equals(other *Node) bool {
+	// Compare the values of n and other
+	return n.value == other.value && n.nodeType == other.nodeType
 }

@@ -373,7 +373,6 @@ func TestNode_AppendObject(t *testing.T) {
 	}
 
 	val, err := Marshal(root)
-
 	if err != nil {
 		t.Errorf("Marshal returns error: %v", err)
 	}
@@ -911,7 +910,6 @@ func TestNode_MustString(t *testing.T) {
 
 func TestUnmarshal_Array(t *testing.T) {
 	root, err := Unmarshal([]byte(" [1,[\"1\",[1,[1,2,3]]]]\r\n"))
-
 	if err != nil {
 		t.Errorf("Error on Unmarshal: %s", err.Error())
 	}
@@ -1147,7 +1145,6 @@ func TestNode_Index_Fail(t *testing.T) {
 				t.Errorf("Index() = %v, want %v", got, tt.want)
 			}
 		})
-
 	}
 }
 
@@ -1231,7 +1228,7 @@ func TestNode_GetKey_Fail(t *testing.T) {
 	}
 }
 
-func TestNode_EachKey(t *testing.T) {
+func TestNode_UniqueKeys(t *testing.T) {
 	tests := []struct {
 		name     string
 		json     string
@@ -1298,6 +1295,23 @@ func TestNode_EachKey(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNode_Keys(t *testing.T) {
+	root, err := Unmarshal([]byte(`{"foo": true, "bar": null}`))
+	if err != nil {
+		t.Errorf("error occurred while unmarshal")
+	}
+	value := root.Keys()
+	if len(value) != 2 {
+		t.Errorf("Keys() must be 2. got: %v", len(value))
+	}
+	if value[0] != "foo" || value[1] != "bar" {
+		t.Errorf("Keys() must be foo, bar. got: %v", value)
+	}
+	if (*Node)(nil).Keys() != nil {
+		t.Errorf("Keys() must be nil")
 	}
 }
 
@@ -1941,6 +1955,68 @@ func TestNode_Clone(t *testing.T) {
 				t.Errorf("Marshal() error: %s", err)
 			} else if string(base) != test.json {
 				t.Errorf("Marshal() base not match: \nExpected: %s\nActual: %s", test.json, base)
+			}
+		})
+	}
+}
+
+func TestNode_Inheritors(t *testing.T) {
+	tests := []struct {
+		name     string
+		node     *Node
+		expected []*Node
+	}{
+		{
+			name: "object",
+			node: ObjectNode("", map[string]*Node{
+				"zero": NullNode("0"),
+				"foo":  NumberNode("1", 1),
+				"bar":  StringNode("str", "foo"),
+			}),
+			expected: []*Node{
+				StringNode("str", "foo"),
+				NumberNode("1", 1),
+				NullNode("0"),
+			},
+		},
+		{
+			name: "array",
+			node: ArrayNode("", []*Node{
+				NullNode("0"),
+				NumberNode("1", 1),
+				StringNode("str", "foo"),
+			}),
+			expected: []*Node{
+				NullNode("0"),
+				NumberNode("1", 1),
+				StringNode("str", "foo"),
+			},
+		},
+		{
+			name: "parsed array",
+			node: Must(Unmarshal([]byte(`[{"clientId":"qwerty","advice":{},"success":true}]`))),
+			expected: []*Node{
+				ObjectNode("", map[string]*Node{
+					"clientId": StringNode("clientId", "qwerty"),
+					"advice":   ObjectNode("advice", map[string]*Node{}),
+					"success":  BoolNode("success", true),
+				}),
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := test.node.getSortedChildren()
+			if len(result) != len(test.expected) {
+				t.Errorf("Failed: wrong size")
+			} else {
+				for i, node := range test.expected {
+					if ok, err := node.Eq(result[i]); err != nil {
+						t.Errorf("Failed: %s", err.Error())
+					} else if !ok {
+						t.Errorf("Failed: '%s' != '%s'", node, result[i])
+					}
+				}
 			}
 		})
 	}
